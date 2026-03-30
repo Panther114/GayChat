@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GayChat 🏳️‍🌈 — Sign In</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="auth-body">
+  <div class="auth-card">
+    <!-- Logo / Brand -->
+    <div class="auth-logo">
+      <span class="auth-logo-icon">💬</span>
+      <h1 class="auth-title">GayChat <span>🏳️‍🌈</span></h1>
+      <p class="auth-subtitle">Encrypted Group Messaging</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="signin">Sign In</button>
+      <button class="auth-tab" data-tab="signup">Sign Up</button>
+    </div>
+
+    <!-- Sign In Form -->
+    <form id="signin-form" class="auth-form active" novalidate>
+      <div class="form-group">
+        <label for="signin-username">Username</label>
+        <input
+          type="text"
+          id="signin-username"
+          placeholder="Enter your username"
+          autocomplete="username"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label for="signin-password">Password</label>
+        <input
+          type="password"
+          id="signin-password"
+          placeholder="Enter your password"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+      <p class="form-error" id="signin-error"></p>
+      <button type="submit" class="btn-primary" id="signin-btn">Sign In</button>
+    </form>
+
+    <!-- Sign Up Form -->
+    <form id="signup-form" class="auth-form" novalidate>
+      <div class="form-group">
+        <label for="signup-username">Username</label>
+        <input
+          type="text"
+          id="signup-username"
+          placeholder="Choose a username (2–32 chars)"
+          autocomplete="username"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label for="signup-password">Password</label>
+        <input
+          type="password"
+          id="signup-password"
+          placeholder="At least 6 characters"
+          autocomplete="new-password"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label for="signup-confirm">Confirm Password</label>
+        <input
+          type="password"
+          id="signup-confirm"
+          placeholder="Repeat your password"
+          autocomplete="new-password"
+          required
+        />
+      </div>
+      <div class="form-group form-group-color">
+        <label for="signup-color">Icon Color</label>
+        <div class="color-pick-row">
+          <input type="color" id="signup-color" value="#4A90D9" />
+          <span class="color-preview" id="color-preview">●</span>
+        </div>
+      </div>
+      <p class="form-error" id="signup-error"></p>
+      <button type="submit" class="btn-primary" id="signup-btn">Create Account</button>
+    </form>
+  </div>
+
+  <script>
+    // ── CSRF token (fetched once, reused for all state-changing requests) ─────
+    let csrfToken = null;
+    async function fetchCsrfToken() {
+      try {
+        const res = await fetch('/api/auth/csrf');
+        const data = await res.json();
+        csrfToken = data.csrfToken;
+      } catch {
+        // Will retry on next request if needed
+      }
+    }
+    fetchCsrfToken();
+
+    function authHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (csrfToken) h['X-CSRF-Token'] = csrfToken;
+      return h;
+    }
+
+    // ── Tab switching ────────────────────────────────────────────────────────
+    document.querySelectorAll('.auth-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.auth-tab').forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('.auth-form').forEach((f) => f.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`${target}-form`).classList.add('active');
+      });
+    });
+
+    // ── Color preview ────────────────────────────────────────────────────────
+    const colorInput = document.getElementById('signup-color');
+    const colorPreview = document.getElementById('color-preview');
+    colorInput.addEventListener('input', () => {
+      colorPreview.style.color = colorInput.value;
+    });
+    colorPreview.style.color = colorInput.value;
+
+    // ── Sign In ──────────────────────────────────────────────────────────────
+    document.getElementById('signin-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('signin-btn');
+      const errorEl = document.getElementById('signin-error');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+
+      const username = document.getElementById('signin-username').value.trim();
+      const password = document.getElementById('signin-password').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Sign in failed';
+        } else {
+          window.location.href = 'chat.html';
+        }
+      } catch {
+        errorEl.textContent = 'Network error. Please try again.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+
+    // ── Sign Up ──────────────────────────────────────────────────────────────
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('signup-btn');
+      const errorEl = document.getElementById('signup-error');
+      errorEl.textContent = '';
+
+      const username = document.getElementById('signup-username').value.trim();
+      const password = document.getElementById('signup-password').value;
+      const confirm = document.getElementById('signup-confirm').value;
+      const iconColor = document.getElementById('signup-color').value;
+
+      if (password !== confirm) {
+        errorEl.textContent = 'Passwords do not match';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating account…';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ username, password, iconColor }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Registration failed';
+        } else {
+          window.location.href = 'chat.html';
+        }
+      } catch {
+        errorEl.textContent = 'Network error. Please try again.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>
