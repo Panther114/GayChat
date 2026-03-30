@@ -198,6 +198,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadGroups() {
   try {
     const res = await fetch('/api/groups/mine');
+    if (!res.ok) {
+      if (res.status === 401) window.location.href = 'index.html';
+      return;
+    }
     groups = await res.json();
     renderGroupList();
   } catch (err) {
@@ -302,6 +306,11 @@ async function loadMessages(groupId) {
 
   try {
     const res = await fetch(`/api/groups/${groupId}/messages`);
+    if (!res.ok) {
+      if (res.status === 401) window.location.href = 'index.html';
+      console.error('Failed to load messages, status:', res.status);
+      return;
+    }
     const messages = await res.json();
 
     for (const msg of messages) {
@@ -403,6 +412,11 @@ async function loadMembers(groupId) {
 
   try {
     const res = await fetch(`/api/groups/${groupId}/members`);
+    if (!res.ok) {
+      if (res.status === 401) window.location.href = 'index.html';
+      console.error('Failed to load members, status:', res.status);
+      return;
+    }
     const members = await res.json();
 
     document.getElementById('chat-member-count').textContent =
@@ -438,7 +452,7 @@ async function loadMembers(groupId) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function initSocket() {
-  socket = io({ transports: ['websocket', 'polling'] });
+  socket = io({ transports: ['polling', 'websocket'] });
 
   socket.on('connect', () => {
     console.log('Socket connected');
