@@ -22,6 +22,15 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ── Content Security Policy ───────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws: wss:;"
+  );
+  next();
+});
+
 // ── Database ──────────────────────────────────────────────────────────────────
 const DB_PATH = process.env.DB_PATH || './gaychat.db';
 const SESSIONS_DIR = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : '.';
@@ -64,6 +73,9 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// Migration: add type column if not present (ignored if already exists)
+try { db.exec("ALTER TABLE messages ADD COLUMN type TEXT NOT NULL DEFAULT 'text'"); } catch { /* column already exists */ }
 
 // ── Prepared Statements ───────────────────────────────────────────────────────
 const stmts = {
@@ -108,11 +120,11 @@ const stmts = {
 
   // Messages
   insertMessage: db.prepare(
-    'INSERT INTO messages (id, group_id, sender_id, encrypted_content, iv) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, group_id, sender_id, encrypted_content, iv, type) VALUES (?, ?, ?, ?, ?, ?)'
   ),
   getMessages: db.prepare(`
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
-           u.icon_color AS sender_color, m.encrypted_content, m.iv, m.created_at
+           u.icon_color AS sender_color, m.encrypted_content, m.iv, m.type, m.created_at
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.group_id = ?
@@ -121,13 +133,19 @@ const stmts = {
   `),
   getLastMessages: db.prepare(`
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
-           u.icon_color AS sender_color, m.encrypted_content, m.iv, m.created_at
+           u.icon_color AS sender_color, m.encrypted_content, m.iv, m.type, m.created_at
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.group_id = ?
     ORDER BY m.created_at DESC
     LIMIT 100
   `),
+
+  // Owner controls
+  deleteMember: db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?'),
+  deleteGroupMessages: db.prepare('DELETE FROM messages WHERE group_id = ?'),
+  deleteGroupMembers: db.prepare('DELETE FROM group_members WHERE group_id = ?'),
+  deleteGroup: db.prepare('DELETE FROM group_chats WHERE id = ?'),
 };
 
 // ── Session Middleware ────────────────────────────────────────────────────────
@@ -431,6 +449,7 @@ app.get('/api/groups/:groupId/messages', (req, res) => {
       senderColor: m.sender_color,
       encryptedContent: m.encrypted_content,
       iv: m.iv,
+      type: m.type || 'text',
       createdAt: m.created_at,
     }))
   );
@@ -454,6 +473,96 @@ app.get('/api/groups/:groupId/members', (req, res) => {
       iconColor: u.icon_color,
     }))
   );
+});
+
+// POST /api/groups/:groupId/upload-image — upload encrypted image
+app.post('/api/groups/:groupId/upload-image', (req, res) => {
+  const { groupId } = req.params;
+  const userId = req.session.userId;
+
+  const member = stmts.isMember.get(groupId, userId);
+  if (!member) {
+    return res.status(403).json({ error: 'Not a member of this group' });
+  }
+
+  const { encryptedContent, iv } = req.body;
+  if (!encryptedContent || typeof encryptedContent !== 'string' || !iv || typeof iv !== 'string') {
+    return res.status(400).json({ error: 'encryptedContent and iv are required' });
+  }
+  if (encryptedContent.length > 5_500_000) {
+    return res.status(400).json({ error: 'Image too large' });
+  }
+
+  const msgId = uuidv4();
+  const createdAt = new Date().toISOString();
+  const user = stmts.findUserById.get(userId);
+
+  try {
+    stmts.insertMessage.run(msgId, groupId, userId, encryptedContent, iv, 'image');
+  } catch (err) {
+    console.error('DB insert image error:', err);
+    return res.status(500).json({ error: 'Failed to save image' });
+  }
+
+  const payload = {
+    id: msgId,
+    groupId,
+    senderId: userId,
+    senderName: user.username,
+    senderColor: user.icon_color,
+    encryptedContent,
+    iv,
+    type: 'image',
+    createdAt,
+  };
+
+  io.to(groupId).emit('new_message', payload);
+  res.json({ messageId: msgId });
+});
+
+// DELETE /api/groups/:groupId/members/:userId — kick a member (owner only)
+app.delete('/api/groups/:groupId/members/:userId', (req, res) => {
+  const { groupId, userId: targetUserId } = req.params;
+  const userId = req.session.userId;
+
+  const member = stmts.isMember.get(groupId, userId);
+  if (!member) {
+    return res.status(403).json({ error: 'Not a member of this group' });
+  }
+
+  const group = stmts.findGroupById.get(groupId);
+  if (!group || group.created_by !== userId) {
+    return res.status(403).json({ error: 'Only the group owner can kick members' });
+  }
+
+  if (targetUserId === userId) {
+    return res.status(400).json({ error: 'You cannot kick yourself' });
+  }
+
+  stmts.deleteMember.run(groupId, targetUserId);
+  io.to(groupId).emit('member_kicked', { userId: targetUserId, groupId });
+  res.json({ ok: true });
+});
+
+// DELETE /api/groups/:groupId — disband group (owner only)
+app.delete('/api/groups/:groupId', (req, res) => {
+  const { groupId } = req.params;
+  const userId = req.session.userId;
+
+  const group = stmts.findGroupById.get(groupId);
+  if (!group) {
+    return res.status(404).json({ error: 'Group not found' });
+  }
+  if (group.created_by !== userId) {
+    return res.status(403).json({ error: 'Only the group owner can disband this group' });
+  }
+
+  stmts.deleteGroupMessages.run(groupId);
+  stmts.deleteGroupMembers.run(groupId);
+  stmts.deleteGroup.run(groupId);
+
+  io.to(groupId).emit('group_disbanded', { groupId });
+  res.json({ ok: true });
 });
 
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
@@ -520,7 +629,7 @@ io.on('connection', (socket) => {
     const createdAt = new Date().toISOString();
 
     try {
-      stmts.insertMessage.run(msgId, groupId, socket.userId, encryptedContent, iv);
+      stmts.insertMessage.run(msgId, groupId, socket.userId, encryptedContent, iv, 'text');
     } catch (err) {
       console.error('DB insert message error:', err);
       socket.emit('error', { message: 'Failed to save message' });
@@ -535,6 +644,7 @@ io.on('connection', (socket) => {
       senderColor: socket.iconColor,
       encryptedContent,
       iv,
+      type: 'text',
       createdAt,
     };
 
