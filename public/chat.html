@@ -69,10 +69,12 @@
 
       <!-- Message input -->
       <div class="message-input-bar">
+        <button class="btn-icon btn-attach" id="attach-btn" title="Send image">📎</button>
+        <input type="file" id="image-input" accept="image/*" hidden />
         <input
           type="text"
           id="message-input"
-          placeholder="Type a message… (will be encrypted before sending)"
+          placeholder="Type a message…"
           autocomplete="off"
         />
         <button class="btn-send" id="send-btn" title="Send">➤</button>
@@ -90,8 +92,12 @@
         <span>Code: </span><strong id="right-group-code">—</strong>
         <button class="btn-copy" id="copy-code-btn" title="Copy code">📋</button>
       </div>
+      <div class="right-panel-key-row">
+        <button class="btn-set-key" id="set-key-btn" title="Set encryption key for this group">🔑 Set Key</button>
+      </div>
       <h4 class="members-title">Members</h4>
       <ul class="members-list" id="members-list"></ul>
+      <button class="btn-disband" id="disband-btn" hidden>⚠ Disband Group</button>
     </div>
     <div class="right-panel-empty" id="right-panel-empty">
       <p>Select a group to see details</p>
@@ -138,36 +144,19 @@
     </div>
   </div>
 
-  <!-- Encrypt / Send Key Modal -->
-  <div class="modal-overlay" id="encrypt-modal" hidden>
+  <!-- Group Key Modal -->
+  <div class="modal-overlay" id="group-key-modal" hidden>
     <div class="modal">
-      <h2>🔐 Encrypt Message</h2>
-      <p class="modal-desc">Enter an encryption key. Share this key with group members who need to read your message.</p>
+      <h2>🔑 Set Group Key</h2>
+      <p class="modal-desc">Set the encryption key for this group. All messages will be auto-encrypted and decrypted with this key.</p>
       <div class="form-group">
-        <label for="encrypt-key">Encryption Key</label>
-        <input type="password" id="encrypt-key" placeholder="Enter encryption key" autocomplete="off" />
+        <label for="group-key-input">Encryption Key</label>
+        <input type="password" id="group-key-input" placeholder="Enter a strong key" autocomplete="off" />
       </div>
-      <p class="form-error" id="encrypt-error"></p>
+      <p class="form-error" id="group-key-error"></p>
       <div class="modal-actions">
-        <button class="btn-secondary" id="encrypt-cancel-btn">Cancel</button>
-        <button class="btn-primary" id="encrypt-confirm-btn">Encrypt &amp; Send</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Decrypt Key Modal -->
-  <div class="modal-overlay" id="decrypt-modal" hidden>
-    <div class="modal">
-      <h2>🔓 Decrypt Message</h2>
-      <p class="modal-desc">Enter the encryption key used to encrypt this message.</p>
-      <div class="form-group">
-        <label for="decrypt-key">Decryption Key</label>
-        <input type="password" id="decrypt-key" placeholder="Enter decryption key" autocomplete="off" />
-      </div>
-      <p class="form-error" id="decrypt-error"></p>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="decrypt-cancel-btn">Cancel</button>
-        <button class="btn-primary" id="decrypt-confirm-btn">Decrypt</button>
+        <button class="btn-secondary" id="group-key-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="group-key-save-btn">Save Key</button>
       </div>
     </div>
   </div>

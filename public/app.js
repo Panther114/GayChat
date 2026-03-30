@@ -77,9 +77,56 @@ async function decryptMessage(encryptedContent, ivBase64, passphrase, salt) {
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
     return new TextDecoder().decode(decrypted);
   } catch {
-    // Return null on failure so UI can show error
     return null;
   }
+}
+
+/**
+ * Encrypt raw bytes (ArrayBuffer) with AES-256-GCM.
+ * @param {ArrayBuffer} buffer
+ * @param {string} passphrase
+ * @param {string} salt — group ID
+ * @returns {Promise<{encryptedContent: string, iv: string}>} base64-encoded
+ */
+async function encryptBytes(buffer, passphrase, salt) {
+  const key = await deriveKey(passphrase, salt);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buffer);
+  return {
+    encryptedContent: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
+    iv: btoa(String.fromCharCode(...iv)),
+  };
+}
+
+/**
+ * Decrypt AES-256-GCM ciphertext to raw bytes (ArrayBuffer).
+ * @param {string} encryptedB64 — base64
+ * @param {string} ivB64        — base64
+ * @param {string} passphrase
+ * @param {string} salt — group ID
+ * @returns {Promise<ArrayBuffer|null>} decrypted bytes, or null on failure
+ */
+async function decryptBytes(encryptedB64, ivB64, passphrase, salt) {
+  try {
+    const key = await deriveKey(passphrase, salt);
+    const iv = Uint8Array.from(atob(ivB64), (c) => c.charCodeAt(0));
+    const data = Uint8Array.from(atob(encryptedB64), (c) => c.charCodeAt(0));
+    return await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+  } catch {
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Per-Group Key Storage (localStorage)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function getGroupKey(groupId) {
+  return localStorage.getItem(`groupKey:${groupId}`) || null;
+}
+
+function setGroupKey(groupId, key) {
+  localStorage.setItem(`groupKey:${groupId}`, key);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -94,6 +141,9 @@ let csrfToken = null;        // CSRF token for state-changing requests
 
 // Typing debounce timer
 let typingTimer = null;
+
+// Callback to run after group key is saved
+let afterGroupKeySaved = null;
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  CSRF Helper
@@ -326,7 +376,7 @@ async function loadMessages(groupId) {
 
 /**
  * Build and append a message bubble to the messages area.
- * @param {object} msg — { id, senderId, senderName, senderColor, encryptedContent, iv, createdAt }
+ * @param {object} msg — { id, senderId, senderName, senderColor, encryptedContent, iv, type, createdAt }
  */
 function appendMessageBubble(msg) {
   const isOwn = msg.senderId === currentUser.id;
@@ -358,13 +408,50 @@ function appendMessageBubble(msg) {
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
 
-  // Ciphertext display (truncated)
-  const cipher = document.createElement('span');
-  cipher.className = 'msg-cipher';
-  cipher.textContent = truncate(msg.encryptedContent, 60);
-  bubble.appendChild(cipher);
+  if (msg.type === 'image') {
+    // Image bubble — attempt async decrypt then update DOM
+    const placeholder = document.createElement('div');
+    placeholder.className = 'img-locked';
+    placeholder.innerHTML = '<span>🔒</span>';
+    bubble.appendChild(placeholder);
 
-  // Meta row: time + decrypt button
+    const groupKey = currentGroupId ? getGroupKey(currentGroupId) : null;
+    if (groupKey) {
+      decryptBytes(msg.encryptedContent, msg.iv, groupKey, currentGroupId).then((buf) => {
+        if (buf) {
+          const blob = new Blob([buf]);
+          const url = URL.createObjectURL(blob);
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = 'msg-image';
+          img.addEventListener('click', () => window.open(url, '_blank'));
+          bubble.replaceChild(img, placeholder);
+        }
+      });
+    }
+  } else {
+    // Text bubble — attempt auto-decrypt
+    const cipher = document.createElement('span');
+    cipher.className = 'msg-cipher';
+
+    const groupKey = currentGroupId ? getGroupKey(currentGroupId) : null;
+    if (groupKey) {
+      cipher.textContent = '…';
+      decryptMessage(msg.encryptedContent, msg.iv, groupKey, currentGroupId).then((plaintext) => {
+        if (plaintext !== null) {
+          cipher.textContent = plaintext;
+          cipher.classList.add('decrypted');
+        } else {
+          cipher.textContent = '🔒 ' + truncate(msg.encryptedContent, 40);
+        }
+      });
+    } else {
+      cipher.textContent = '🔒 ' + truncate(msg.encryptedContent, 40);
+    }
+    bubble.appendChild(cipher);
+  }
+
+  // Meta row: time
   const meta = document.createElement('div');
   meta.className = 'msg-meta';
 
@@ -372,17 +459,7 @@ function appendMessageBubble(msg) {
   time.className = 'msg-time';
   time.textContent = formatTime(msg.createdAt);
 
-  const decryptBtn = document.createElement('button');
-  decryptBtn.className = 'btn-decrypt';
-  decryptBtn.textContent = '🔓';
-  decryptBtn.title = 'Decrypt this message';
-  decryptBtn.addEventListener('click', () => {
-    openDecryptModal(msg.encryptedContent, msg.iv, cipher, decryptBtn);
-  });
-
   meta.appendChild(time);
-  meta.appendChild(decryptBtn);
-
   bubble.appendChild(meta);
   content.appendChild(bubble);
 
@@ -395,6 +472,14 @@ function appendMessageBubble(msg) {
   }
 
   messagesArea.appendChild(row);
+}
+
+/**
+ * Re-render all messages in the current group using the (new) saved key.
+ */
+async function reRenderMessages() {
+  if (!currentGroupId) return;
+  await loadMessages(currentGroupId);
 }
 
 function scrollToBottom() {
@@ -422,9 +507,17 @@ async function loadMembers(groupId) {
     document.getElementById('chat-member-count').textContent =
       `${members.length} member${members.length !== 1 ? 's' : ''}`;
 
+    const group = groups.find((g) => g.id === groupId);
+    const isOwner = group && group.createdBy === currentUser.id;
+
+    // Show/hide disband button
+    const disbandBtn = document.getElementById('disband-btn');
+    disbandBtn.hidden = !isOwner;
+
     for (const member of members) {
       const li = document.createElement('li');
       li.className = 'member-item';
+      li.dataset.userId = member.id;
 
       const avatar = document.createElement('div');
       avatar.className = 'avatar';
@@ -440,10 +533,62 @@ async function loadMembers(groupId) {
 
       li.appendChild(avatar);
       li.appendChild(name);
+
+      if (isOwner && member.id !== currentUser.id) {
+        const kickBtn = document.createElement('button');
+        kickBtn.className = 'btn-kick';
+        kickBtn.textContent = '✕';
+        kickBtn.title = `Kick ${member.username}`;
+        kickBtn.addEventListener('click', () => kickMember(groupId, member.id, li));
+        li.appendChild(kickBtn);
+      }
+
       membersList.appendChild(li);
     }
   } catch (err) {
     console.error('Failed to load members:', err);
+  }
+}
+
+async function kickMember(groupId, targetUserId, liEl) {
+  try {
+    const res = await fetch(`/api/groups/${groupId}/members/${targetUserId}`, {
+      method: 'DELETE',
+      headers: await jsonHeaders(),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || 'Failed to kick member');
+      return;
+    }
+    // Remove from DOM immediately
+    liEl.remove();
+    // Decrement member count
+    const countEl = document.getElementById('chat-member-count');
+    const match = countEl.textContent.match(/\d+/);
+    if (match) {
+      const newCount = parseInt(match[0], 10) - 1;
+      countEl.textContent = `${newCount} member${newCount !== 1 ? 's' : ''}`;
+    }
+  } catch (err) {
+    console.error('Failed to kick member:', err);
+  }
+}
+
+async function disbandGroup(groupId) {
+  if (!confirm('Are you sure you want to disband this group? This will delete all messages and remove all members permanently.')) return;
+  try {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: 'DELETE',
+      headers: await jsonHeaders(),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || 'Failed to disband group');
+    }
+    // Server will emit group_disbanded which handles UI cleanup
+  } catch (err) {
+    console.error('Failed to disband group:', err);
   }
 }
 
@@ -484,6 +629,44 @@ function initSocket() {
     hideTypingIndicator();
   });
 
+  // Member kicked
+  socket.on('member_kicked', (data) => {
+    if (data.userId === currentUser.id) {
+      groups = groups.filter((g) => g.id !== data.groupId);
+      const item = document.querySelector(`.group-item[data-group-id="${data.groupId}"]`);
+      if (item) item.remove();
+      if (groups.length === 0) {
+        document.getElementById('empty-groups').hidden = false;
+      }
+      if (currentGroupId === data.groupId) {
+        currentGroupId = null;
+        document.getElementById('chat-active').hidden = true;
+        document.getElementById('chat-empty').hidden = false;
+        document.getElementById('right-panel-content').hidden = true;
+        document.getElementById('right-panel-empty').hidden = false;
+      }
+      alert('You were removed from this group.');
+    }
+  });
+
+  // Group disbanded
+  socket.on('group_disbanded', (data) => {
+    groups = groups.filter((g) => g.id !== data.groupId);
+    const item = document.querySelector(`.group-item[data-group-id="${data.groupId}"]`);
+    if (item) item.remove();
+    if (groups.length === 0) {
+      document.getElementById('empty-groups').hidden = false;
+    }
+    if (currentGroupId === data.groupId) {
+      currentGroupId = null;
+      document.getElementById('chat-active').hidden = true;
+      document.getElementById('chat-empty').hidden = false;
+      document.getElementById('right-panel-content').hidden = true;
+      document.getElementById('right-panel-empty').hidden = false;
+    }
+    alert('This group has been disbanded.');
+  });
+
   socket.on('error', ({ message }) => {
     console.error('Socket error:', message);
   });
@@ -500,91 +683,51 @@ function hideTypingIndicator() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  Group Key Modal
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openGroupKeyModal(callback) {
+  afterGroupKeySaved = callback || null;
+  const existing = currentGroupId ? getGroupKey(currentGroupId) : '';
+  document.getElementById('group-key-input').value = existing || '';
+  document.getElementById('group-key-error').textContent = '';
+  showModal('group-key-modal');
+  setTimeout(() => document.getElementById('group-key-input').focus(), 50);
+}
+
+function saveGroupKey() {
+  const key = document.getElementById('group-key-input').value;
+  if (!key) {
+    document.getElementById('group-key-error').textContent = 'Please enter a key';
+    return;
+  }
+  if (!currentGroupId) return;
+  setGroupKey(currentGroupId, key);
+  hideModal('group-key-modal');
+  // Re-render messages with new key
+  reRenderMessages();
+  if (afterGroupKeySaved) {
+    const cb = afterGroupKeySaved;
+    afterGroupKeySaved = null;
+    cb();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  Send Message Flow
 // ══════════════════════════════════════════════════════════════════════════════
 
-let pendingPlaintext = null; // text waiting for encryption key
-
-function openEncryptModal(plaintext) {
-  pendingPlaintext = plaintext;
-  document.getElementById('encrypt-key').value = '';
-  document.getElementById('encrypt-error').textContent = '';
-  showModal('encrypt-modal');
-  // Focus key input
-  setTimeout(() => document.getElementById('encrypt-key').focus(), 50);
-}
-
-async function confirmEncryptAndSend() {
-  const key = document.getElementById('encrypt-key').value;
-  if (!key) {
-    document.getElementById('encrypt-error').textContent = 'Please enter an encryption key';
-    return;
-  }
-  if (!pendingPlaintext || !currentGroupId) return;
-
+async function doSend(text) {
+  if (!currentGroupId || !socket) return;
+  const key = getGroupKey(currentGroupId);
+  if (!key) return; // should not happen; caller checks
   try {
-    const { encryptedContent, iv } = await encryptMessage(
-      pendingPlaintext,
-      key,
-      currentGroupId
-    );
-
-    socket.emit('send_message', {
-      groupId: currentGroupId,
-      encryptedContent,
-      iv,
-    });
-
-    hideModal('encrypt-modal');
+    const { encryptedContent, iv } = await encryptMessage(text, key, currentGroupId);
+    socket.emit('send_message', { groupId: currentGroupId, encryptedContent, iv });
     document.getElementById('message-input').value = '';
-    pendingPlaintext = null;
   } catch (err) {
-    document.getElementById('encrypt-error').textContent = 'Encryption failed: ' + err.message;
+    console.error('Encryption failed:', err);
   }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  Decrypt Message Flow
-// ══════════════════════════════════════════════════════════════════════════════
-
-let pendingDecrypt = null; // { encryptedContent, iv, cipherEl, btnEl }
-
-function openDecryptModal(encryptedContent, iv, cipherEl, btnEl) {
-  pendingDecrypt = { encryptedContent, iv, cipherEl, btnEl };
-  document.getElementById('decrypt-key').value = '';
-  document.getElementById('decrypt-error').textContent = '';
-  showModal('decrypt-modal');
-  setTimeout(() => document.getElementById('decrypt-key').focus(), 50);
-}
-
-async function confirmDecrypt() {
-  const key = document.getElementById('decrypt-key').value;
-  if (!key) {
-    document.getElementById('decrypt-error').textContent = 'Please enter a decryption key';
-    return;
-  }
-  if (!pendingDecrypt || !currentGroupId) return;
-
-  const { encryptedContent, iv, cipherEl, btnEl } = pendingDecrypt;
-
-  const plaintext = await decryptMessage(encryptedContent, iv, key, currentGroupId);
-
-  if (plaintext === null) {
-    document.getElementById('decrypt-error').textContent = '❌ Wrong key — decryption failed';
-    return;
-  }
-
-  // Success: replace ciphertext with plaintext
-  cipherEl.textContent = plaintext;
-  cipherEl.classList.add('decrypted');
-  btnEl.textContent = '🔑';
-  btnEl.title = 'Decrypted';
-  // Disable further decryption attempts on this bubble
-  btnEl.disabled = true;
-  btnEl.style.opacity = '0.5';
-
-  hideModal('decrypt-modal');
-  pendingDecrypt = null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -756,37 +899,48 @@ function wireEvents() {
     socket.emit('stop_typing', { groupId: currentGroupId });
   });
 
-  // ── Encrypt modal ─────────────────────────────────────────────────────────
-  document.getElementById('encrypt-confirm-btn').addEventListener('click', confirmEncryptAndSend);
-  document.getElementById('encrypt-cancel-btn').addEventListener('click', () => {
-    hideModal('encrypt-modal');
-    pendingPlaintext = null;
+  // ── Encrypt modal (removed; replaced by group key modal) ────────────────────
+
+  // ── Group key modal ───────────────────────────────────────────────────────
+  document.getElementById('group-key-save-btn').addEventListener('click', saveGroupKey);
+  document.getElementById('group-key-cancel-btn').addEventListener('click', () => {
+    hideModal('group-key-modal');
+    afterGroupKeySaved = null;
   });
-  document.getElementById('encrypt-modal').addEventListener('click', (e) => {
+  document.getElementById('group-key-modal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) {
-      hideModal('encrypt-modal');
-      pendingPlaintext = null;
+      hideModal('group-key-modal');
+      afterGroupKeySaved = null;
     }
   });
-  document.getElementById('encrypt-key').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') confirmEncryptAndSend();
+  document.getElementById('group-key-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveGroupKey();
   });
 
-  // ── Decrypt modal ─────────────────────────────────────────────────────────
-  document.getElementById('decrypt-confirm-btn').addEventListener('click', confirmDecrypt);
-  document.getElementById('decrypt-cancel-btn').addEventListener('click', () => {
-    hideModal('decrypt-modal');
-    pendingDecrypt = null;
+  // ── Set key button in right panel ─────────────────────────────────────────
+  document.getElementById('set-key-btn').addEventListener('click', () => {
+    openGroupKeyModal(null);
   });
-  document.getElementById('decrypt-modal').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) {
-      hideModal('decrypt-modal');
-      pendingDecrypt = null;
+
+  // ── Disband button ────────────────────────────────────────────────────────
+  document.getElementById('disband-btn').addEventListener('click', () => {
+    if (currentGroupId) disbandGroup(currentGroupId);
+  });
+
+  // ── Attach button (image upload) ──────────────────────────────────────────
+  document.getElementById('attach-btn').addEventListener('click', () => {
+    if (!currentGroupId) return;
+    const key = getGroupKey(currentGroupId);
+    if (!key) {
+      openGroupKeyModal(() => document.getElementById('image-input').click());
+      return;
     }
+    document.getElementById('image-input').click();
   });
-  document.getElementById('decrypt-key').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') confirmDecrypt();
-  });
+
+  document.getElementById('image-input').addEventListener('change', handleImageSelect);
+
+  // ── Decrypt modal (removed; replaced by auto-decrypt) ────────────────────
 
   // ── Copy group code ───────────────────────────────────────────────────────
   document.getElementById('copy-code-btn').addEventListener('click', () => {
@@ -805,7 +959,7 @@ function wireEvents() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  Handle Send (opens encrypt modal)
+//  Handle Send
 // ══════════════════════════════════════════════════════════════════════════════
 
 function handleSend() {
@@ -814,9 +968,48 @@ function handleSend() {
   const text = input.value.trim();
   if (!text) return;
 
-  // Stop typing indicator before opening modal
+  // Stop typing indicator
   clearTimeout(typingTimer);
   if (socket) socket.emit('stop_typing', { groupId: currentGroupId });
 
-  openEncryptModal(text);
+  const key = getGroupKey(currentGroupId);
+  if (!key) {
+    // No key set — open key modal, then auto-send after key is saved
+    openGroupKeyModal(() => doSend(text));
+    return;
+  }
+  doSend(text);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Handle Image Upload
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function handleImageSelect(e) {
+  const file = e.target.files[0];
+  // Reset so the same file can be reselected
+  e.target.value = '';
+  if (!file || !currentGroupId) return;
+
+  const key = getGroupKey(currentGroupId);
+  if (!key) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const { encryptedContent, iv } = await encryptBytes(buffer, key, currentGroupId);
+
+    const headers = await jsonHeaders();
+    const res = await fetch(`/api/groups/${currentGroupId}/upload-image`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ encryptedContent, iv }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || 'Failed to upload image');
+    }
+    // Server broadcasts new_message via socket — no need to append manually
+  } catch (err) {
+    console.error('Image upload failed:', err);
+  }
 }
