@@ -50,6 +50,49 @@ A WeChat-style, text-only, **end-to-end encrypted** group chat application built
 |---|---|---|
 | `SESSION_SECRET` | ✅ Yes | Secret for signing session cookies. Use a long random string in production. |
 | `PORT` | Set by Railway | Port the server listens on. Defaults to `3000` locally. |
+| `DB_PATH` | No | Full path for the SQLite database file (e.g. `/data/gaychat.db`). Useful with Railway Volumes for persistence. Defaults to `./gaychat.db`. |
+| `ADMIN_SECRET` | No | Set this to enable the `GET /api/admin/users` endpoint. Requests must supply `Authorization: Bearer <value>`. |
+
+---
+
+## Admin: Viewing Registered Users
+
+1. In your Railway project's **Variables** tab, set `ADMIN_SECRET` to a strong secret string.
+2. Call the endpoint with your secret:
+
+   ```bash
+   curl https://<your-railway-url>/api/admin/users \
+     -H "Authorization: Bearer YOUR_SECRET"
+   ```
+
+3. The response is a JSON array of user objects:
+
+   ```json
+   [
+     {
+       "id": "uuid",
+       "username": "alice",
+       "iconColor": "#4A90D9",
+       "createdAt": "2024-01-01T00:00:00.000Z"
+     }
+   ]
+   ```
+
+> **Note:** Passwords are bcrypt-hashed and **CANNOT be recovered** — by design. The admin endpoint intentionally omits password hashes.
+
+---
+
+## Persistent Storage on Railway
+
+By default, Railway's filesystem is **ephemeral** — it is wiped on every redeploy, which means your SQLite database (users, groups, messages) will be lost.
+
+To persist data across deploys:
+
+1. In your Railway project, go to **New** → **Volume**.
+2. Mount the volume at `/data`.
+3. In the **Variables** tab, add: `DB_PATH` = `/data/gaychat.db`.
+
+Railway will now store the database file on the mounted volume and it will survive redeploys.
 
 ---
 

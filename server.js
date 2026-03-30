@@ -18,11 +18,14 @@ const crypto = require('crypto');
 
 // ── App & Server ──────────────────────────────────────────────────────────────
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server);
 
 // ── Database ──────────────────────────────────────────────────────────────────
-const db = new Database('gaychat.db');
+const DB_PATH = process.env.DB_PATH || './gaychat.db';
+const SESSIONS_DIR = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : '.';
+const db = new Database(DB_PATH);
 
 // Enable WAL mode for better concurrent performance
 db.pragma('journal_mode = WAL');
@@ -100,6 +103,9 @@ const stmts = {
     ORDER BY gm.joined_at ASC
   `),
 
+  // Admin
+  getAllUsers: db.prepare('SELECT id, username, icon_color, created_at FROM users ORDER BY created_at DESC'),
+
   // Messages
   insertMessage: db.prepare(
     'INSERT INTO messages (id, group_id, sender_id, encrypted_content, iv) VALUES (?, ?, ?, ?, ?)'
@@ -126,16 +132,14 @@ const stmts = {
 
 // ── Session Middleware ────────────────────────────────────────────────────────
 const sessionMiddleware = session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: '.' }),
+  store: new SQLiteStore({ db: 'sessions.db', dir: SESSIONS_DIR }),
   secret: process.env.SESSION_SECRET || 'gaychat-dev-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    // SameSite=strict prevents cross-origin cookie sending (primary CSRF defence)
-    sameSite: 'strict',
-    // Allow secure cookies only in production (Railway uses HTTPS)
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT != null,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   },
 });
@@ -195,6 +199,7 @@ const UNPROTECTED = [
   '/auth/login',
   '/auth/me',
   '/auth/csrf',
+  '/admin/users',
 ];
 
 function requireAuth(req, res, next) {
@@ -306,6 +311,28 @@ app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => {
     res.json({ ok: true });
   });
+});
+
+// ── Admin Routes ──────────────────────────────────────────────────────────────
+
+// GET /api/admin/users — list all users (requires ADMIN_SECRET bearer token)
+app.get('/api/admin/users', (req, res) => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) {
+    return res.status(503).json({ error: 'Admin endpoint disabled. Set ADMIN_SECRET environment variable to enable.' });
+  }
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token || token !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const users = stmts.getAllUsers.all();
+  res.json(users.map(u => ({
+    id: u.id,
+    username: u.username,
+    iconColor: u.icon_color,
+    createdAt: u.created_at,
+  })));
 });
 
 // ── Group Routes ──────────────────────────────────────────────────────────────
@@ -433,7 +460,8 @@ app.get('/api/groups/:groupId/members', (req, res) => {
 
 // Share the express session with Socket.IO
 io.use((socket, next) => {
-  sessionMiddleware(socket.request, socket.request.res || {}, next);
+  const fakeRes = { getHeader: () => {}, setHeader: () => {} };
+  sessionMiddleware(socket.request, socket.request.res || fakeRes, next);
 });
 
 // Authenticate socket connections
