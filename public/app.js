@@ -121,8 +121,14 @@ function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : s; }
-function formatTime(dateStr) {
-  return new Date(dateStr).toLocaleTimeString('zh-CN', {
+function formatTime(iso) {
+  if (!iso) return '';
+  // SQLite CURRENT_TIMESTAMP returns 'YYYY-MM-DD HH:MM:SS' (no T, no Z).
+  // Normalize to a proper UTC ISO string before parsing so all browsers
+  // treat it as UTC rather than local time.
+  const str = iso.replace(' ', 'T');
+  const utc = (str.endsWith('Z') || str.includes('+')) ? str : str + 'Z';
+  return new Date(utc).toLocaleTimeString('zh-CN', {
     timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }
@@ -664,7 +670,7 @@ async function appendMessageBubble(msg, scroll) {
 
   // Scroll behavior
   if (scroll !== false) {
-    const isAtBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 60;
+    const isAtBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
     if (isAtBottom) {
       scrollToBottom();
     } else {
@@ -730,14 +736,14 @@ async function doSend(text) {
   const now = Date.now();
   clientRateLimiter.times = clientRateLimiter.times.filter(t => now - t < 3000);
   if (clientRateLimiter.times.length >= 5) {
-    showError('⚠️ Sending too fast, slow down');
+    showToast('⚠️ Sending too fast, slow down', 'error');
     return;
   }
   // Repeated message check
   if (text === clientRateLimiter.lastContent) {
     clientRateLimiter.repeatCount = (clientRateLimiter.repeatCount || 0) + 1;
     if (clientRateLimiter.repeatCount >= 3) {
-      showError("⚠️ Don't send the same message repeatedly");
+      showToast("⚠️ Don't send the same message repeatedly", 'error');
       return;
     }
   } else {
@@ -780,30 +786,32 @@ async function doSend(text) {
     autoResizeTextarea(inp);
   } catch(err) {
     console.error('Encryption failed:', err);
-    showError('Failed to send message');
+    showToast('Failed to send message', 'error');
   }
 }
 
-function showError(msg) {
-  // Show brief error in the input area
-  const bar = $('message-input-bar');
-  let err = bar.querySelector('.send-error');
-  if (!err) {
-    err = document.createElement('div');
-    err.className = 'send-error';
-    err.style.cssText = 'position:absolute;bottom:62px;left:16px;background:rgba(255,50,50,.9);color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;z-index:50';
-    document.querySelector('.chat-active').appendChild(err);
-  }
-  err.textContent = msg;
-  err.style.display = 'block';
-  setTimeout(() => { err.style.display = 'none'; }, 3000);
+// ── Toast notification ────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  // Stack toasts: offset each new one above the previous
+  const existing = document.querySelectorAll('.toast');
+  const offset = existing.length * 52;
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  el.style.bottom = (24 + offset) + 'px';
+  document.body.appendChild(el);
+  const remove = () => {
+    el.classList.add('hiding');
+    setTimeout(() => el.remove(), 320);
+  };
+  setTimeout(remove, 3000);
 }
 
 // ── File / Image upload ───────────────────────────────────────────────────────
 async function handleFileUpload(file) {
   if (!currentGroupId || !socket) return;
   const key = getGroupKey(currentGroupId);
-  if (!key) { showError('Set group key first'); return; }
+  if (!key) { showToast('Set group key first', 'error'); return; }
 
   const MAX_RAW = 1 * 1024 * 1024; // 1MB
 
@@ -813,12 +821,12 @@ async function handleFileUpload(file) {
   if (isImage) {
     processedFile = await compressImage(file);
     if (processedFile.size > MAX_RAW) {
-      showError('Image too large (max 1MB after compression)');
+      showToast('Image too large (max 1MB after compression)', 'error');
       return;
     }
   } else {
     if (file.size > MAX_RAW) {
-      showError('File too large (max 1MB)');
+      showToast('File too large (max 1MB)', 'error');
       return;
     }
   }
@@ -836,11 +844,11 @@ async function handleFileUpload(file) {
 
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showError(d.error || 'Upload failed');
+      showToast(d.error || 'Upload failed', 'error');
     }
   } catch(err) {
     console.error('File upload error:', err);
-    showError('Upload failed');
+    showToast('Upload failed', 'error');
   }
 }
 
@@ -1009,7 +1017,7 @@ function initSocket() {
   });
 
   socket.on('error', ({ message }) => {
-    showError(message || 'An error occurred');
+    showToast(message || 'An error occurred', 'error');
   });
 }
 
@@ -1103,6 +1111,7 @@ function forgetKey() {
       clearGroupKey(currentGroupId);
       updateKeyState();
       await loadMessages(currentGroupId);
+      showToast('🗝 Key forgotten — messages are now locked', 'info');
     }
   );
 }
@@ -1113,9 +1122,11 @@ async function kickMember(userId, username) {
     const res = await fetch('/api/groups/' + currentGroupId + '/members/' + userId, {
       method: 'DELETE', headers: apiHeaders(),
     });
-    if (!res.ok) {
+    if (res.ok) {
+      showToast('Kicked ' + username, 'success');
+    } else {
       const d = await res.json().catch(() => ({}));
-      showError(d.error || 'Failed to kick member');
+      showToast(d.error || 'Failed to kick member', 'error');
     }
   });
 }
@@ -1368,7 +1379,7 @@ function setupEventListeners() {
       $('edit-group-name-btn').hidden = false;
     } else {
       const d = await res.json().catch(() => ({}));
-      showError(d.error || 'Failed to rename');
+      showToast(d.error || 'Failed to rename', 'error');
     }
   });
 
@@ -1383,7 +1394,7 @@ function setupEventListeners() {
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
-          showError(d.error || 'Failed');
+          showToast(d.error || 'Failed', 'error');
         }
       }
     );
@@ -1409,7 +1420,7 @@ function setupEventListeners() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        showError(d.error || 'Failed');
+        showToast(d.error || 'Failed', 'error');
       }
     });
   });
@@ -1428,9 +1439,10 @@ function setupEventListeners() {
         $('chat-empty').hidden = false;
         $('right-panel-content').hidden = true;
         $('right-panel-empty').hidden = false;
+        showToast('🚪 Left group', 'success');
       } else {
         const d = await res.json().catch(() => ({}));
-        showError(d.error || 'Failed');
+        showToast(d.error || 'Failed', 'error');
       }
     });
   });
@@ -1473,7 +1485,7 @@ function setupEventListeners() {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showError(d.error || 'Failed to delete');
+      showToast(d.error || 'Failed to delete', 'error');
     }
   });
 
@@ -1551,7 +1563,7 @@ function setupEventListeners() {
   // Scroll listener for pagination + scroll-to-bottom visibility
   messagesArea().addEventListener('scroll', () => {
     const area = messagesArea();
-    const isAtBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 60;
+    const isAtBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
     $('scroll-bottom-btn').hidden = isAtBottom;
     if (isAtBottom) {
       scrollUnreadCount = 0;
