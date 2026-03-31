@@ -1461,10 +1461,14 @@ function setupEventListeners() {
   $('ctx-reply').addEventListener('click', () => {
     if (!ctxMsg) return;
     hideContextMenu();
+    const isDecryptFail = ctxText === '[No key — set group key to decrypt]' || ctxText === '[Unable to decrypt]';
+    const preview = (ctxText && !isDecryptFail)
+      ? ctxText
+      : (ctxMsg.type === 'image' ? '[image]' : ctxMsg.type === 'file' ? '[file: ' + (ctxMsg.filename || '') + ']' : '[encrypted]');
     replyingTo = {
       id: ctxMsg.id,
       senderName: ctxMsg.senderName,
-      preview: ctxText || (ctxMsg.type === 'image' ? '[image]' : '[file]'),
+      preview,
     };
     $('reply-preview-name').textContent = ctxMsg.senderName;
     $('reply-preview-text').textContent = truncate(replyingTo.preview, 80);
@@ -1565,7 +1569,7 @@ function setupEventListeners() {
       area.querySelectorAll('.msg-row.unread').forEach(r => r.classList.remove('unread'));
     }
     // Infinite scroll up
-    if (area.scrollTop < 80 && !loadingOlder && oldestMessageId) {
+    if (area.scrollTop <= 1 && !loadingOlder && oldestMessageId) {
       loadOlderMessages();
     }
   });
@@ -1600,12 +1604,47 @@ async function loadOlderMessages() {
   if (loadingOlder || !oldestMessageId || !currentGroupId) return;
   loadingOlder = true;
   const indicator = $('load-more-indicator');
-  indicator.hidden = false;
+  if (indicator) indicator.hidden = false;
   try {
-    await loadMessages(currentGroupId, oldestMessageId);
+    const url = `/api/groups/${currentGroupId}/messages?before=${oldestMessageId}&limit=50`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const msgs = await res.json();
+    if (!msgs.length) {
+      oldestMessageId = null; // no more older messages
+      return;
+    }
+
+    const area = messagesArea();
+    const prevScrollHeight = area.scrollHeight;
+
+    // Build all rows concurrently (msgs is oldest-first from server)
+    const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
+
+    // Assemble into a fragment (single DOM mutation, no scroll drift)
+    const fragment = document.createDocumentFragment();
+    for (const row of rows) {
+      if (row) fragment.appendChild(row);
+    }
+
+    // Single DOM mutation — prepend the whole fragment
+    const oldFirst = area.querySelector('.msg-row, .msg-system');
+    if (oldFirst) {
+      area.insertBefore(fragment, oldFirst);
+    } else {
+      area.appendChild(fragment);
+    }
+
+    allMessages = [...msgs, ...allMessages];
+    oldestMessageId = msgs[0].id;
+
+    // Restore scroll position in one step
+    area.scrollTop = area.scrollHeight - prevScrollHeight;
+  } catch(err) {
+    console.error('loadOlderMessages error:', err);
   } finally {
     loadingOlder = false;
-    indicator.hidden = true;
+    if (indicator) indicator.hidden = true;
   }
 }
 

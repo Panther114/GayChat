@@ -89,10 +89,27 @@ const migrations = [
   "ALTER TABLE messages ADD COLUMN filename TEXT",
   "ALTER TABLE messages ADD COLUMN whisper_to TEXT",
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
+  "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
 ];
 for (const sql of migrations) {
-  try { db.exec(sql); } catch { /* column already exists */ }
+  try { db.exec(sql); } catch { /* column/table already exists */ }
 }
+
+// Ensure a stable session secret persists across restarts even without SESSION_SECRET env var
+function getOrCreateSessionSecret() {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  try {
+    const existing = db.prepare("SELECT value FROM _config WHERE key = 'session_secret'").get();
+    if (existing) return existing.value;
+    const newSecret = crypto.randomBytes(32).toString('hex');
+    db.prepare("INSERT INTO _config (key, value) VALUES ('session_secret', ?)").run(newSecret);
+    return newSecret;
+  } catch (err) {
+    console.error('getOrCreateSessionSecret error:', err);
+    return 'gaychat-dev-secret';
+  }
+}
+const SESSION_SECRET = getOrCreateSessionSecret();
 
 // ── Prepared Statements ───────────────────────────────────────────────────────
 const stmts = {
@@ -179,14 +196,14 @@ const stmts = {
 // ── Session Middleware ────────────────────────────────────────────────────────
 const sessionMiddleware = session({
   store: new SQLiteStore({ db: 'sessions.db', dir: SESSIONS_DIR }),
-  secret: process.env.SESSION_SECRET || 'gaychat-dev-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT != null,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   },
 });
 
