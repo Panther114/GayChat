@@ -37,6 +37,11 @@ app.use((req, res, next) => {
 // ── Database ──────────────────────────────────────────────────────────────────
 const DB_PATH = process.env.DB_PATH || './gaychat.db';
 const SESSIONS_DIR = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : '.';
+
+if (!process.env.DB_PATH) {
+  console.warn('⚠️  WARNING: DB_PATH not set. Database is stored at ./gaychat.db on ephemeral filesystem. Data will be lost on redeploy. Set DB_PATH=/data/gaychat.db and mount a Railway Volume to persist data.');
+}
+
 const db = new Database(DB_PATH);
 
 // Enable WAL mode for better concurrent performance
@@ -379,6 +384,13 @@ app.patch('/api/auth/profile', (req, res) => {
   try {
     stmts.updateUser.run(username || null, iconColor || null, userId);
     const user = stmts.findUserById.get(userId);
+    // Update in-memory socket state for all connected sockets of this user
+    for (const [, s] of io.sockets.sockets) {
+      if (s.userId === userId) {
+        s.username = user.username;
+        s.iconColor = user.icon_color;
+      }
+    }
     // Notify all connected sockets for this user
     io.emit('user_updated', formatUser(user));
     res.json(formatUser(user));
