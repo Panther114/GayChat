@@ -217,7 +217,6 @@ const UNPROTECTED = [
   '/auth/login',
   '/auth/me',
   '/auth/csrf',
-  '/admin/users',
 ];
 
 function requireAuth(req, res, next) {
@@ -569,7 +568,11 @@ app.delete('/api/groups/:groupId', (req, res) => {
 
 // Share the express session with Socket.IO
 io.use((socket, next) => {
-  const fakeRes = { getHeader: () => {}, setHeader: () => {} };
+  const fakeRes = {
+    getHeader: () => {},
+    setHeader: () => {},
+    end: () => {},
+  };
   sessionMiddleware(socket.request, socket.request.res || fakeRes, next);
 });
 

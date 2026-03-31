@@ -364,7 +364,7 @@ async function loadMessages(groupId) {
     const messages = await res.json();
 
     for (const msg of messages) {
-      appendMessageBubble(msg);
+      await appendMessageBubble(msg);
     }
 
     // Scroll to bottom
@@ -378,7 +378,7 @@ async function loadMessages(groupId) {
  * Build and append a message bubble to the messages area.
  * @param {object} msg — { id, senderId, senderName, senderColor, encryptedContent, iv, type, createdAt }
  */
-function appendMessageBubble(msg) {
+async function appendMessageBubble(msg) {
   const isOwn = msg.senderId === currentUser.id;
   const messagesArea = document.getElementById('messages-area');
 
@@ -417,17 +417,16 @@ function appendMessageBubble(msg) {
 
     const groupKey = currentGroupId ? getGroupKey(currentGroupId) : null;
     if (groupKey) {
-      decryptBytes(msg.encryptedContent, msg.iv, groupKey, currentGroupId).then((buf) => {
-        if (buf) {
-          const blob = new Blob([buf]);
-          const url = URL.createObjectURL(blob);
-          const img = document.createElement('img');
-          img.src = url;
-          img.className = 'msg-image';
-          img.addEventListener('click', () => window.open(url, '_blank'));
-          bubble.replaceChild(img, placeholder);
-        }
-      });
+      const buf = await decryptBytes(msg.encryptedContent, msg.iv, groupKey, currentGroupId);
+      if (buf) {
+        const blob = new Blob([buf]);
+        const url = URL.createObjectURL(blob);
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'msg-image';
+        img.addEventListener('click', () => window.open(url, '_blank'));
+        bubble.replaceChild(img, placeholder);
+      }
     }
   } else {
     // Text bubble — attempt auto-decrypt
@@ -437,14 +436,13 @@ function appendMessageBubble(msg) {
     const groupKey = currentGroupId ? getGroupKey(currentGroupId) : null;
     if (groupKey) {
       cipher.textContent = '…';
-      decryptMessage(msg.encryptedContent, msg.iv, groupKey, currentGroupId).then((plaintext) => {
-        if (plaintext !== null) {
-          cipher.textContent = plaintext;
-          cipher.classList.add('decrypted');
-        } else {
-          cipher.textContent = '🔒 ' + truncate(msg.encryptedContent, 40);
-        }
-      });
+      const plaintext = await decryptMessage(msg.encryptedContent, msg.iv, groupKey, currentGroupId);
+      if (plaintext !== null) {
+        cipher.textContent = plaintext;
+        cipher.classList.add('decrypted');
+      } else {
+        cipher.textContent = '🔒 ' + truncate(msg.encryptedContent, 40);
+      }
     } else {
       cipher.textContent = '🔒 ' + truncate(msg.encryptedContent, 40);
     }
@@ -612,10 +610,10 @@ function initSocket() {
   });
 
   // Incoming message
-  socket.on('new_message', (msg) => {
+  socket.on('new_message', async (msg) => {
     // Only render if the message belongs to the currently viewed group
     if (msg.groupId === currentGroupId) {
-      appendMessageBubble(msg);
+      await appendMessageBubble(msg);
       scrollToBottom();
     }
   });
