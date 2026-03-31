@@ -59,6 +59,19 @@ async function decryptBytes(encryptedContent, ivB64, passphrase, groupId) {
   }
 }
 
+// ── Image MIME type detection ──────────────────────────────────────────────────
+function detectImageMime(buf) {
+  const ab = buf instanceof ArrayBuffer ? buf : buf.buffer;
+  const bytes = new Uint8Array(ab, 0, Math.min(12, ab.byteLength));
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
+  // WebP: 'RIFF' at 0 + 'WEBP' at 8
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 // ── Compression Helper ────────────────────────────────────────────────────────
 async function compressImage(file) {
   return new Promise((resolve) => {
@@ -546,7 +559,6 @@ async function buildMessageRow(msg) {
   bubble.addEventListener('touchend', () => clearTimeout(longPressTimer));
 
   if (isOwn) {
-    content.appendChild(meta);
     row.append(content, av);
   } else {
     row.append(av, content);
@@ -574,7 +586,8 @@ async function renderMsgContent(msg, textEl, bubble) {
     } else {
       const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
       if (buf) {
-        const blob = new Blob([buf]);
+        const mimeType = detectImageMime(buf) || 'image/jpeg';
+        const blob = new Blob([buf], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const img = document.createElement('img');
         img.className = 'msg-image';
@@ -1265,7 +1278,8 @@ function setupEventListeners() {
     $('create-modal').hidden = true;
     groups.unshift(d);
     renderGroupList();
-    selectGroup(d.id);
+    await selectGroup(d.id);
+    addSystemMessage('🎉 Group "' + d.name + '" created!');
   });
 
   // Join group
@@ -1287,7 +1301,8 @@ function setupEventListeners() {
     if (!res.ok) { $('join-error').textContent = d.error || 'Failed'; return; }
     $('join-modal').hidden = true;
     if (!groups.find(g => g.id === d.id)) { groups.unshift(d); renderGroupList(); }
-    selectGroup(d.id);
+    await selectGroup(d.id);
+    addSystemMessage('👋 You joined "' + d.name + '"!');
   });
 
   // Set group key
