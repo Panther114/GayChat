@@ -167,6 +167,13 @@ let oldestMessageId = null;
 let loadingOlder = false;
 let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
 
+// Decryption failure text constants (must match renderMsgContent output)
+const MSG_NO_KEY = '[No key — set group key to decrypt]';
+const MSG_DECRYPT_FAIL = '[Unable to decrypt]';
+
+// Scroll threshold (px from top) that triggers loading older messages
+const SCROLL_LOAD_THRESHOLD = 1;
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const messagesArea = () => $('messages-area');
@@ -638,13 +645,13 @@ async function renderMsgContent(msg, textEl, bubble) {
 
   // Text message
   if (!key) {
-    textEl.textContent = '[No key — set group key to decrypt]';
+    textEl.textContent = MSG_NO_KEY;
     return;
   }
 
   const plaintext = await decryptMessage(msg.encryptedContent, msg.iv, key, currentGroupId);
   if (plaintext === null) {
-    textEl.textContent = '[Unable to decrypt]';
+    textEl.textContent = MSG_DECRYPT_FAIL;
   } else {
     textEl.textContent = plaintext;
   }
@@ -1204,9 +1211,9 @@ async function exportChat() {
     else if (msg.type === 'file') content = '[File: ' + (msg.filename || '') + ']';
     else if (key) {
       const pt = await decryptMessage(msg.encryptedContent, msg.iv, key, currentGroupId);
-      content = pt || '[Unable to decrypt]';
+      content = pt || MSG_DECRYPT_FAIL;
     } else {
-      content = '[No key — cannot decrypt]';
+      content = MSG_NO_KEY;
     }
     lines.push('[' + time + '] ' + (msg.senderName || 'Unknown') + ': ' + content);
   }
@@ -1461,10 +1468,21 @@ function setupEventListeners() {
   $('ctx-reply').addEventListener('click', () => {
     if (!ctxMsg) return;
     hideContextMenu();
+    const isDecryptFail = ctxText === MSG_NO_KEY || ctxText === MSG_DECRYPT_FAIL;
+    let preview;
+    if (ctxText && !isDecryptFail) {
+      preview = ctxText;
+    } else if (ctxMsg.type === 'image') {
+      preview = '[image]';
+    } else if (ctxMsg.type === 'file') {
+      preview = '[file: ' + (ctxMsg.filename || '') + ']';
+    } else {
+      preview = '[encrypted]';
+    }
     replyingTo = {
       id: ctxMsg.id,
       senderName: ctxMsg.senderName,
-      preview: ctxText || (ctxMsg.type === 'image' ? '[image]' : '[file]'),
+      preview,
     };
     $('reply-preview-name').textContent = ctxMsg.senderName;
     $('reply-preview-text').textContent = truncate(replyingTo.preview, 80);
@@ -1565,7 +1583,7 @@ function setupEventListeners() {
       area.querySelectorAll('.msg-row.unread').forEach(r => r.classList.remove('unread'));
     }
     // Infinite scroll up
-    if (area.scrollTop < 80 && !loadingOlder && oldestMessageId) {
+    if (area.scrollTop <= SCROLL_LOAD_THRESHOLD && !loadingOlder && oldestMessageId) {
       loadOlderMessages();
     }
   });
@@ -1600,12 +1618,47 @@ async function loadOlderMessages() {
   if (loadingOlder || !oldestMessageId || !currentGroupId) return;
   loadingOlder = true;
   const indicator = $('load-more-indicator');
-  indicator.hidden = false;
+  if (indicator) indicator.hidden = false;
   try {
-    await loadMessages(currentGroupId, oldestMessageId);
+    const url = `/api/groups/${currentGroupId}/messages?before=${oldestMessageId}&limit=50`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const msgs = await res.json();
+    if (!msgs.length) {
+      oldestMessageId = null; // no more older messages
+      return;
+    }
+
+    const area = messagesArea();
+    const prevScrollHeight = area.scrollHeight;
+
+    // Build all rows concurrently (msgs is oldest-first from server)
+    const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
+
+    // Assemble into a fragment (single DOM mutation, no scroll drift)
+    const fragment = document.createDocumentFragment();
+    for (const row of rows) {
+      if (row) fragment.appendChild(row);
+    }
+
+    // Single DOM mutation — prepend the whole fragment
+    const oldFirst = area.querySelector('.msg-row, .msg-system');
+    if (oldFirst) {
+      area.insertBefore(fragment, oldFirst);
+    } else {
+      area.appendChild(fragment);
+    }
+
+    allMessages = [...msgs, ...allMessages];
+    oldestMessageId = msgs[0].id;
+
+    // Restore scroll position in one step
+    area.scrollTop = area.scrollHeight - prevScrollHeight;
+  } catch(err) {
+    console.error('loadOlderMessages error:', err);
   } finally {
     loadingOlder = false;
-    indicator.hidden = true;
+    if (indicator) indicator.hidden = true;
   }
 }
 

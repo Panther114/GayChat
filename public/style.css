@@ -453,16 +453,20 @@ body.chat-body {
 
 /* Reply quote */
 .msg-reply-box {
-  background: rgba(255,255,255,.08);
-  border-left: 3px solid rgba(255,255,255,.35);
+  background: rgba(0,0,0,.06);
+  border-left: 3px solid rgba(0,0,0,.25);
   border-radius: 4px;
   padding: 4px 8px;
   margin-bottom: 4px;
   font-size: 11px;
-  color: rgba(255,255,255,.7);
+  color: rgba(0,0,0,.6);
   cursor: pointer;
 }
-.msg-row.own .msg-reply-box { background: rgba(255,255,255,.15); }
+.msg-row.own .msg-reply-box {
+  background: rgba(0,0,0,.10);
+  border-left-color: rgba(0,0,0,.35);
+  color: rgba(0,0,0,.65);
+}
 .msg-reply-sender { font-weight: 700; margin-bottom: 2px; display: block; }
 
 /* Image in bubble */
