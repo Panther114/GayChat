@@ -8,116 +8,156 @@
 </head>
 <body class="chat-body">
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       LEFT SIDEBAR
-  ══════════════════════════════════════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
-    <!-- User info -->
-    <div class="sidebar-user">
-      <div class="avatar" id="user-avatar" style="background:#4A90D9">?</div>
-      <span class="sidebar-username" id="user-username">Loading…</span>
-      <button class="btn-icon logout-btn" id="logout-btn" title="Logout">⏏</button>
+    <div class="sidebar-brand">
+      <span class="brand-icon">💬</span>
+      <span class="brand-name">GayChat</span>
+      <span class="brand-flag">🏳️‍🌈</span>
     </div>
-
-    <!-- Search (UI only) -->
-    <div class="sidebar-search">
-      <input type="text" placeholder="🔍  Search" readonly />
+    <div class="conn-status" id="conn-status">
+      <span class="conn-dot" id="conn-dot"></span>
+      <span class="conn-label" id="conn-label">Connecting…</span>
     </div>
-
-    <!-- Group list -->
     <nav class="group-list" id="group-list">
-      <div class="empty-groups" id="empty-groups">No chats yet. Create or join one below!</div>
     </nav>
-
-    <!-- Bottom action buttons -->
     <div class="sidebar-actions">
       <button class="btn-action" id="new-group-btn">＋ New Group</button>
       <button class="btn-action" id="join-group-btn">⤵ Join Group</button>
     </div>
+    <div class="sidebar-user" id="sidebar-user-btn">
+      <div class="avatar" id="user-avatar" style="background:#4A90D9">?</div>
+      <span class="sidebar-username" id="user-username">Loading…</span>
+      <button class="btn-icon logout-btn" id="logout-btn" title="Logout">⏏</button>
+    </div>
   </aside>
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       MAIN CHAT PANEL
-  ══════════════════════════════════════════════════════════════════════════ -->
   <main class="chat-panel" id="chat-panel">
-    <!-- Empty state when no group selected -->
     <div class="chat-empty" id="chat-empty">
-      <p>💬</p>
-      <p>Select a group or create a new one to start chatting</p>
+      <div class="chat-empty-icon">💬</div>
+      <p class="chat-empty-title">Select a group to start chatting</p>
+      <p class="chat-empty-sub">Your messages are end-to-end encrypted</p>
     </div>
 
-    <!-- Chat area (shown when group is selected) -->
     <div class="chat-active" id="chat-active" hidden>
-      <!-- Top bar -->
       <div class="chat-topbar">
-        <!-- Hamburger for mobile -->
         <button class="btn-icon sidebar-toggle" id="sidebar-toggle" title="Menu">☰</button>
         <div class="chat-topbar-info">
           <span class="chat-topbar-name" id="chat-group-name">Group Name</span>
           <span class="chat-topbar-meta" id="chat-member-count">0 members</span>
         </div>
+        <button class="btn-icon right-panel-toggle" id="right-panel-toggle" title="Info">ℹ</button>
       </div>
 
-      <!-- Messages -->
-      <div class="messages-area" id="messages-area"></div>
+      <button class="unread-jump-btn" id="unread-jump-btn" hidden>⬆ Go to first unread</button>
 
-      <!-- Typing indicator -->
+      <div class="reconnect-banner" id="reconnect-banner" hidden>🔄 Reconnecting…</div>
+
+      <div class="messages-area" id="messages-area">
+        <div class="load-more-indicator" id="load-more-indicator" hidden>Loading older messages…</div>
+      </div>
+
+      <button class="scroll-bottom-btn" id="scroll-bottom-btn" hidden>
+        ↓<span class="scroll-unread-badge" id="scroll-unread-badge" hidden>0</span>
+      </button>
+
       <div class="typing-indicator" id="typing-indicator" hidden>
         <span class="typing-user" id="typing-user"></span>
         <span class="typing-dots"><span></span><span></span><span></span></span>
       </div>
 
-      <!-- Message input -->
+      <div class="reply-preview-bar" id="reply-preview-bar" hidden>
+        <div class="reply-preview-content">
+          <span class="reply-preview-name" id="reply-preview-name"></span>
+          <span class="reply-preview-text" id="reply-preview-text"></span>
+        </div>
+        <button class="reply-cancel-btn" id="reply-cancel-btn">✕</button>
+      </div>
+
       <div class="message-input-bar">
-        <button class="btn-icon btn-attach" id="attach-btn" title="Send image">📎</button>
-        <input type="file" id="image-input" accept="image/*" hidden />
-        <input
-          type="text"
+        <button class="btn-icon btn-whisper-mode" id="whisper-mode-btn" title="Message mode">📢</button>
+        <button class="btn-icon btn-emoji" id="emoji-btn" title="Emoji">😊</button>
+        <label class="btn-icon btn-attach" title="Attach file">
+          📎<input type="file" id="file-input" accept="*/*" hidden />
+        </label>
+        <textarea
           id="message-input"
           placeholder="Type a message…"
           autocomplete="off"
-        />
+          rows="1"
+        ></textarea>
         <button class="btn-send" id="send-btn" title="Send">➤</button>
+      </div>
+
+      <div class="whisper-picker" id="whisper-picker" hidden>
+        <div class="whisper-picker-header">🤫 Whisper to:</div>
+        <div class="whisper-picker-list" id="whisper-picker-list"></div>
+      </div>
+
+      <div class="emoji-picker" id="emoji-picker" hidden></div>
+
+      <div class="key-prompt-bar" id="key-prompt-bar" hidden>
+        <span>🔑 Enter group key to continue:</span>
+        <input type="password" id="key-prompt-input" placeholder="Group encryption key" />
+        <button class="btn-primary btn-sm" id="key-prompt-save-btn">Unlock</button>
       </div>
     </div>
   </main>
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       RIGHT PANEL — Group info & members
-  ══════════════════════════════════════════════════════════════════════════ -->
   <aside class="right-panel" id="right-panel">
     <div class="right-panel-inner" id="right-panel-content" hidden>
-      <h3 class="right-panel-title" id="right-group-name">Group</h3>
+      <div class="right-panel-group-name-row">
+        <h3 class="right-panel-title" id="right-group-name">Group</h3>
+        <button class="btn-edit-name" id="edit-group-name-btn" title="Rename group">✏️</button>
+      </div>
+      <div id="edit-group-name-form" hidden>
+        <input type="text" id="edit-group-name-input" placeholder="New group name" />
+        <button class="btn-primary btn-sm" id="edit-group-name-save">Save</button>
+        <button class="btn-secondary btn-sm" id="edit-group-name-cancel">Cancel</button>
+      </div>
       <div class="right-panel-code">
         <span>Code: </span><strong id="right-group-code">—</strong>
         <button class="btn-copy" id="copy-code-btn" title="Copy code">📋</button>
       </div>
-      <div class="right-panel-key-row">
-        <button class="btn-set-key" id="set-key-btn" title="Set encryption key for this group">🔑 Set Key</button>
+      <div class="right-panel-actions">
+        <button class="btn-action-sm btn-set-key" id="set-key-btn">🔑 Set Key</button>
+        <button class="btn-action-sm btn-enc-toggle" id="enc-toggle-btn">🔒 Hide Encryption</button>
+        <button class="btn-action-sm btn-forget-key" id="forget-key-btn">🗝 Forget Key</button>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="🔍 Search messages" />
+        <button class="btn-clear-search" id="clear-search-btn">✕</button>
+        <span class="search-results-count" id="search-results-count"></span>
       </div>
       <h4 class="members-title">Members</h4>
       <ul class="members-list" id="members-list"></ul>
-      <button class="btn-disband" id="disband-btn" hidden>⚠ Disband Group</button>
+      <div class="right-panel-owner-actions" id="owner-actions" hidden>
+        <button class="btn-action-sm btn-clear-history" id="clear-history-btn">🗑 Clear Chat History</button>
+        <label class="toggle-label">
+          <input type="checkbox" id="allow-member-clear-toggle" />
+          Allow members to clear history
+        </label>
+        <button class="btn-action-sm btn-export" id="export-btn">📥 Export Chat (TXT)</button>
+        <button class="btn-disband" id="disband-btn">⚠ Disband Group</button>
+      </div>
+      <div class="right-panel-member-actions" id="member-actions" hidden>
+        <button class="btn-action-sm btn-leave" id="leave-group-btn">🚪 Leave Group</button>
+      </div>
     </div>
     <div class="right-panel-empty" id="right-panel-empty">
       <p>Select a group to see details</p>
     </div>
   </aside>
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       MODALS
-  ══════════════════════════════════════════════════════════════════════════ -->
 
-  <!-- Create Group Modal -->
   <div class="modal-overlay" id="create-modal" hidden>
     <div class="modal">
       <h2>Create New Group</h2>
       <div class="form-group">
-        <label for="create-group-name">Group Name</label>
+        <label>Group Name</label>
         <input type="text" id="create-group-name" placeholder="e.g. Friends, Work, etc." />
       </div>
       <div class="form-group">
-        <label for="create-group-code">Group Code <small>(share this to invite others)</small></label>
+        <label>Group Code <small>(share to invite others)</small></label>
         <input type="text" id="create-group-code" placeholder="e.g. secret-crew-2024" />
       </div>
       <p class="form-error" id="create-error"></p>
@@ -128,12 +168,11 @@
     </div>
   </div>
 
-  <!-- Join Group Modal -->
   <div class="modal-overlay" id="join-modal" hidden>
     <div class="modal">
       <h2>Join a Group</h2>
       <div class="form-group">
-        <label for="join-group-code">Group Code</label>
+        <label>Group Code</label>
         <input type="text" id="join-group-code" placeholder="Enter the group code" />
       </div>
       <p class="form-error" id="join-error"></p>
@@ -144,13 +183,12 @@
     </div>
   </div>
 
-  <!-- Group Key Modal -->
   <div class="modal-overlay" id="group-key-modal" hidden>
     <div class="modal">
       <h2>🔑 Set Group Key</h2>
-      <p class="modal-desc">Set the encryption key for this group. All messages will be auto-encrypted and decrypted with this key.</p>
+      <p class="modal-desc">All messages are auto-encrypted and decrypted with this key.</p>
       <div class="form-group">
-        <label for="group-key-input">Encryption Key</label>
+        <label>Encryption Key</label>
         <input type="password" id="group-key-input" placeholder="Enter a strong key" autocomplete="off" />
       </div>
       <p class="form-error" id="group-key-error"></p>
@@ -161,7 +199,63 @@
     </div>
   </div>
 
-  <!-- Mobile sidebar overlay -->
+  <div class="modal-overlay" id="profile-modal" hidden>
+    <div class="modal">
+      <h2>👤 Profile</h2>
+      <div class="form-group">
+        <label>Change Username</label>
+        <input type="text" id="profile-username" placeholder="New username" />
+        <button class="btn-primary btn-sm" id="profile-save-username">Save</button>
+      </div>
+      <div class="form-group">
+        <label>Change Icon Color</label>
+        <div class="color-pick-row">
+          <input type="color" id="profile-color" value="#4A90D9" />
+          <button class="btn-primary btn-sm" id="profile-save-color">Save</button>
+        </div>
+      </div>
+      <p class="form-error" id="profile-error"></p>
+      <hr class="modal-divider" />
+      <button class="btn-danger" id="profile-delete-btn">🗑 Delete Account</button>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="profile-cancel-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="confirm-modal" hidden>
+    <div class="modal">
+      <h2 id="confirm-title">Confirm</h2>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="confirm-cancel-btn">Cancel</button>
+        <button class="btn-danger" id="confirm-ok-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="shortcuts-modal" hidden>
+    <div class="modal">
+      <h2>⌨️ Keyboard Shortcuts</h2>
+      <table class="shortcuts-table">
+        <tr><td><kbd>Enter</kbd></td><td>Send message</td></tr>
+        <tr><td><kbd>Shift+Enter</kbd></td><td>New line</td></tr>
+        <tr><td><kbd>Ctrl+V</kbd></td><td>Paste image</td></tr>
+        <tr><td><kbd>Escape</kbd></td><td>Close modal / cancel reply</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show shortcuts</td></tr>
+      </table>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="shortcuts-close-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ctx-menu" id="ctx-menu" hidden>
+    <button class="ctx-item" id="ctx-reply">↩ Reply</button>
+    <button class="ctx-item" id="ctx-copy">📋 Copy Text</button>
+    <button class="ctx-item" id="ctx-delete" hidden>🗑 Delete</button>
+  </div>
+
   <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>
 
   <script src="/socket.io/socket.io.js"></script>
