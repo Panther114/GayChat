@@ -112,9 +112,9 @@ function apiHeaders() {
 }
 
 // ── Per-group key storage ────────────────────────────────────────────────────
-function getGroupKey(groupId) { return sessionStorage.getItem('gk:' + groupId) || null; }
-function setGroupKey(groupId, key) { sessionStorage.setItem('gk:' + groupId, key); }
-function clearGroupKey(groupId) { sessionStorage.removeItem('gk:' + groupId); }
+function getGroupKey(groupId) { return localStorage.getItem('gk:' + groupId) || null; }
+function setGroupKey(groupId, key) { localStorage.setItem('gk:' + groupId, key); }
+function clearGroupKey(groupId) { localStorage.removeItem('gk:' + groupId); }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -338,11 +338,9 @@ function updateKeyState() {
   const hasKey = !!key;
   const input = $('message-input');
   const sendBtn = $('send-btn');
-  const keyPrompt = $('key-prompt-bar');
   input.disabled = !hasKey;
   input.placeholder = hasKey ? 'Type a message…' : 'Enter group key to continue';
   sendBtn.disabled = !hasKey;
-  keyPrompt.hidden = hasKey;
 }
 
 // ── Load messages ─────────────────────────────────────────────────────────────
@@ -524,7 +522,7 @@ async function buildMessageRow(msg) {
       const rb = document.createElement('div');
       rb.className = 'msg-reply-box';
       rb.innerHTML = '<span class="msg-reply-sender">' + escapeHtml(rData.senderName || '') + '</span>' + escapeHtml(truncate(rData.preview || '', 60));
-      rb.addEventListener('click', () => scrollToMessage(rData.messageId));
+      rb.addEventListener('click', () => scrollToMessage(rData.id || rData.messageId));
       bubble.appendChild(rb);
     } catch { /* malformed reply data */ }
   }
@@ -712,9 +710,6 @@ function showContextMenu(e, msg, text) {
   ctxMsg = msg; ctxText = text;
   const menu = $('ctx-menu');
   menu.hidden = false;
-  const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
-  const isSender = msg.senderId === currentUser.id;
-  $('ctx-delete').hidden = !(isOwner || isSender);
   if (e) {
     menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + 'px';
     menu.style.top = Math.min(e.clientY, window.innerHeight - 100) + 'px';
@@ -775,6 +770,10 @@ async function doSend(text) {
     } else {
       socket.emit('send_message', { groupId: currentGroupId, encryptedContent, iv, replyTo: replyToData });
     }
+
+    // Stop typing indicator
+    clearTimeout(window._myTypingTimer);
+    socket.emit('stop_typing', { groupId: currentGroupId });
 
     // Clear reply
     replyingTo = null;
@@ -978,8 +977,12 @@ function initSocket() {
     renderGroupList();
     if (groupId === currentGroupId) {
       currentGroupId = null; currentGroupData = null;
+      members = [];
       $('chat-active').hidden = true;
       $('chat-empty').hidden = false;
+      $('right-panel-content').hidden = true;
+      $('right-panel-empty').hidden = false;
+      addSystemMessage('This group has been disbanded');
     }
   });
 
@@ -1003,6 +1006,13 @@ function initSocket() {
       $('user-avatar').textContent = user.username[0].toUpperCase();
       $('user-avatar').style.background = user.iconColor;
     }
+    // Update avatars and sender names in visible message bubbles
+    document.querySelectorAll('.msg-row[data-sender-id="' + CSS.escape(String(user.id)) + '"]').forEach(row => {
+      const av = row.querySelector('.msg-avatar');
+      if (av && user.username) { av.style.background = user.iconColor; av.textContent = user.username[0].toUpperCase(); }
+      const nameEl = row.querySelector('.msg-sender-name');
+      if (nameEl && user.username) nameEl.textContent = user.username;
+    });
   });
 
   socket.on('user_typing', ({ username }) => {
@@ -1186,12 +1196,8 @@ function searchMessages(term) {
 // ── Export chat ───────────────────────────────────────────────────────────────
 async function exportChat() {
   const key = getGroupKey(currentGroupId);
-  const rows = messagesArea().querySelectorAll('.msg-row');
   const lines = [];
-  for (const row of rows) {
-    const msgId = row.dataset.msgId;
-    const msg = allMessages.find(m => m.id === msgId);
-    if (!msg) continue;
+  for (const msg of allMessages) {
     const time = formatTime(msg.createdAt);
     let content = '';
     if (msg.type === 'image') content = '[Image]';
@@ -1200,17 +1206,21 @@ async function exportChat() {
       const pt = await decryptMessage(msg.encryptedContent, msg.iv, key, currentGroupId);
       content = pt || '[Unable to decrypt]';
     } else {
-      content = '[No key]';
+      content = '[No key — cannot decrypt]';
     }
-    lines.push('[' + time + '] ' + (msg.senderName || '') + ': ' + content);
+    lines.push('[' + time + '] ' + (msg.senderName || 'Unknown') + ': ' + content);
   }
+  if (!lines.length) { showToast('No messages to export', 'info'); return; }
   const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const date = new Date().toISOString().slice(0, 10);
   const gname = (currentGroupData ? currentGroupData.name : 'chat').replace(/[^a-zA-Z0-9]/g, '-');
   a.href = url; a.download = 'gaychat-' + gname + '-' + date + '.txt';
-  a.click(); URL.revokeObjectURL(url);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── Event listeners ───────────────────────────────────────────────────────────
@@ -1328,16 +1338,6 @@ function setupEventListeners() {
     if (!key) { $('group-key-error').textContent = 'Key cannot be empty'; return; }
     setGroupKey(currentGroupId, key);
     $('group-key-modal').hidden = true;
-    updateKeyState();
-    await loadMessages(currentGroupId);
-  });
-
-  // Key prompt bar
-  $('key-prompt-save-btn').addEventListener('click', async () => {
-    const key = $('key-prompt-input').value;
-    if (!key) return;
-    setGroupKey(currentGroupId, key);
-    $('key-prompt-input').value = '';
     updateKeyState();
     await loadMessages(currentGroupId);
   });
@@ -1477,18 +1477,6 @@ function setupEventListeners() {
     hideContextMenu();
   });
 
-  $('ctx-delete').addEventListener('click', async () => {
-    if (!ctxMsg) return;
-    hideContextMenu();
-    const res = await fetch('/api/groups/' + currentGroupId + '/messages/' + ctxMsg.id, {
-      method: 'DELETE', headers: apiHeaders(),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      showToast(d.error || 'Failed to delete', 'error');
-    }
-  });
-
   document.addEventListener('click', (e) => {
     if (!$('ctx-menu').contains(e.target)) hideContextMenu();
     if (!$('emoji-picker').contains(e.target) && e.target !== $('emoji-btn')) {
@@ -1514,6 +1502,11 @@ function setupEventListeners() {
         socket.emit('stop_typing', { groupId: currentGroupId });
       }, 1500);
     }
+  });
+
+  msgInput.addEventListener('blur', () => {
+    clearTimeout(window._myTypingTimer);
+    if (currentGroupId && socket) socket.emit('stop_typing', { groupId: currentGroupId });
   });
 
   msgInput.addEventListener('keydown', (e) => {
