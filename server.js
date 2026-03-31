@@ -16,6 +16,9 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const crypto = require('crypto');
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+const MAX_ENCRYPTED_CONTENT_LENGTH = 1_500_000; // ~1MB raw + base64 overhead
+
 // ── App & Server ──────────────────────────────────────────────────────────────
 const app = express();
 app.set('trust proxy', 1);
@@ -188,6 +191,11 @@ app.use(express.json({ limit: '6mb' }));
 app.use(sessionMiddleware);
 
 // ── CSRF Protection ───────────────────────────────────────────────────────────
+// Double-submit token pattern: token stored in session, sent as X-CSRF-Token header.
+// Login and register are intentionally exempt because no session exists before
+// the first request, so a CSRF token cannot be pre-fetched. These endpoints are
+// also protected by sameSite:'lax' cookies which prevent cross-origin POSTs from
+// regular browsers. The /auth/me endpoint is GET-only so no CSRF risk.
 function getCsrfToken(req) {
   if (!req.session.csrfToken) {
     req.session.csrfToken = crypto.randomBytes(32).toString('hex');
@@ -195,11 +203,12 @@ function getCsrfToken(req) {
   return req.session.csrfToken;
 }
 
+// Paths that don't require a CSRF token (see reasoning above)
 const CSRF_EXEMPT = [
   '/auth/csrf',
-  '/auth/register',
-  '/auth/login',
-  '/auth/me',
+  '/auth/register', // No session before first request; protected by sameSite:lax
+  '/auth/login',    // No session before first request; protected by sameSite:lax
+  '/auth/me',       // GET only
 ];
 
 function csrfProtect(req, res, next) {
@@ -663,18 +672,25 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
     return res.status(400).json({ error: 'encryptedContent and iv are required' });
   }
 
-  // Enforce 1.5MB base64 cap (~1MB raw file + base64 overhead)
-  if (encryptedContent.length > 1_500_000) {
-    return res.status(400).json({ error: 'File too large. Maximum size is 1MB.' });
+  // Validate type
+  const msgType = type === 'file' ? 'file' : 'image';
+
+  // Sanitize filename: strip path separators and limit length
+  let safeFilename = null;
+  if (filename && typeof filename === 'string') {
+    safeFilename = filename.replace(/[/\\]/g, '').slice(0, 255) || null;
   }
 
-  const msgType = type === 'file' ? 'file' : 'image';
+  // Enforce cap
+  if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
+    return res.status(400).json({ error: 'File too large. Maximum size is 1MB.' });
+  }
   const msgId = uuidv4();
   const createdAt = new Date().toISOString();
   const user = stmts.findUserById.get(userId);
 
   try {
-    stmts.insertMessage.run(msgId, groupId, userId, encryptedContent, iv, msgType, null, filename || null, null);
+    stmts.insertMessage.run(msgId, groupId, userId, encryptedContent, iv, msgType, null, safeFilename, null);
   } catch (err) {
     console.error('DB insert file error:', err);
     return res.status(500).json({ error: 'Failed to save file' });
@@ -690,7 +706,7 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
     iv,
     type: msgType,
     replyTo: null,
-    filename: filename || null,
+    filename: safeFilename,
     whisperTo: null,
     createdAt,
   };
@@ -798,7 +814,10 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.username} (${socket.userId})`);
-  socketRateMap.set(socket.id, { timestamps: [], lastContent: '', repeatCount: 0 });
+  // Rate limit keyed by userId to prevent multi-connection bypass
+  if (!socketRateMap.has(socket.userId)) {
+    socketRateMap.set(socket.userId, { timestamps: [], lastContent: '', repeatCount: 0 });
+  }
 
   // ── join_room ──────────────────────────────────────────────────────────────
   socket.on('join_room', (groupId) => {
@@ -838,8 +857,8 @@ io.on('connection', (socket) => {
   socket.on('send_message', ({ groupId, encryptedContent, iv, replyTo }) => {
     if (!groupId || !encryptedContent || !iv) return;
 
-    // Server-side rate limiting: max 10 messages per 5 seconds
-    const rateData = socketRateMap.get(socket.id);
+    // Server-side rate limiting: max 10 messages per 5 seconds, keyed by userId
+    const rateData = socketRateMap.get(socket.userId);
     if (rateData) {
       const now = Date.now();
       rateData.timestamps = rateData.timestamps.filter(t => now - t < 5000);
@@ -861,8 +880,8 @@ io.on('connection', (socket) => {
       rateData.timestamps.push(now);
     }
 
-    // Enforce 1.5MB base64 cap
-    if (encryptedContent.length > 1_500_000) {
+    // Enforce size cap
+    if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
       socket.emit('error', { message: 'Message too large.' });
       return;
     }
@@ -919,14 +938,15 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (encryptedContent.length > 1_500_000) {
+    if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
       socket.emit('error', { message: 'Message too large.' });
       return;
     }
 
     const msgId = uuidv4();
     const createdAt = new Date().toISOString();
-    const whisperToStr = whisperTo.join(',');
+    // Store whisper recipients as JSON array for safety
+    const whisperToStr = JSON.stringify(whisperTo.map(String));
 
     try {
       stmts.insertMessage.run(msgId, groupId, socket.userId, encryptedContent, iv, 'whisper', replyTo || null, null, whisperToStr);
@@ -976,7 +996,7 @@ io.on('connection', (socket) => {
   // ── disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     console.log(`Socket disconnected: ${socket.username}`);
-    socketRateMap.delete(socket.id);
+    // Note: rate map is per-user; only remove if no other sockets for this user
 
     if (socket.currentRoom) {
       removePresence(socket.currentRoom, socket.id);

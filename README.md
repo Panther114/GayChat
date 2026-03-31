@@ -1,34 +1,56 @@
 # GayChat 🏳️‍🌈
 
-A WeChat-style, text-only, **end-to-end encrypted** group chat application built with Node.js, Express, Socket.IO, and SQLite — deployable in one click to [Railway.app](https://railway.app).
+A modern, **end-to-end encrypted** group chat application built with Node.js, Express, Socket.IO, and SQLite — deployable in one click to [Railway.app](https://railway.app).
 
 ---
 
 ## Features
 
 - 🔐 **AES-256-GCM client-side encryption** — plaintext never leaves your browser unencrypted
+- 🔑 **Per-group saved keys** — set a key once per group; messages auto-encrypt/decrypt
 - 👤 **Account registration** with custom username and icon color
 - 💬 **Group chats** — create or join groups via shareable codes
-- 🔑 **Manual key entry** — type an encryption key before sending; share the key with recipients out-of-band
-- 🔓 **Per-message decryption** — click the 🔓 button on any message and enter the key to read it
-- ⚡ **Real-time messaging** via Socket.IO with typing indicators
-- 🎨 **WeChat-inspired UI** — three-panel layout, green chat bubbles, dark sidebar
+- 📎 **Image & file sharing** — 1MB limit enforced (Railway bandwidth-friendly), auto-compressed
+- ↩ **Quote/Reply** — reply to any message with a preview quote
+- 🤫 **Whisper mode** — send private messages to selected members only
+- 👑 **Group owner controls** — kick members, disband group, clear history, rename group
+- 🔍 **Search messages** — client-side search with highlight
+- 📥 **Export chat** — download full chat history as TXT
+- 😊 **Emoji picker** — grid of 80 emojis
+- 🌑 **Modern dark UI** — glassmorphism, gradient bubbles, smooth animations
 - 📱 **Mobile responsive** — collapsible sidebar, optimized for small screens
+- ⚡ **Real-time** via Socket.IO — typing indicators, presence, delivery receipts
+- 🛡 **Anti-spam** — client + server rate limiting
 
 ---
 
 ## How Encryption Works
 
-1. **You type a message** and click Send.
-2. A modal prompts you for an **encryption key** (any passphrase you choose).
-3. The app derives an AES-256 key using **PBKDF2** (100 000 iterations, SHA-256) with your passphrase + the group's UUID as salt.
-4. The message is encrypted with **AES-256-GCM** entirely in your browser.
-5. Only the **ciphertext (base64) + IV (base64)** are sent to the server and stored in SQLite.
-6. To **read** a message, recipients click 🔓 and enter the same key — decryption also happens in the browser.
+1. **Set a group key** — click "🔑 Set Key" in the right panel and enter any passphrase.
+2. The key is stored in `sessionStorage` (lost when you close the tab) and never sent to the server.
+3. The app derives an AES-256 key using **PBKDF2** (100,000 iterations, SHA-256) with your passphrase + the group's UUID as salt.
+4. Every message is encrypted with **AES-256-GCM** entirely in your browser before being sent.
+5. Only the **ciphertext (base64) + IV (base64)** are stored in SQLite on the server.
+6. Recipients who have set the same key see messages automatically decrypted.
+7. If someone doesn't have the key, messages appear as `[No key — set group key to decrypt]`.
 
 > **The server never sees plaintext. Encryption keys are never stored or transmitted.**
 
 ---
+
+## ⚠️ Persistent Storage on Railway (IMPORTANT)
+
+By default, Railway's filesystem is **ephemeral** — it is wiped on every redeploy, which means your SQLite database (users, groups, messages) will be lost.
+
+### To persist data across deploys:
+
+1. In your Railway project, go to **New** → **Volume**.
+2. Mount the volume at **`/data`**.
+3. In the **Variables** tab, add: `DB_PATH` = `/data/gaychat.db`
+
+Railway will now store the database file on the mounted volume and it will survive redeploys.
+
+> **Without this step, all users, groups, and messages are deleted every time you deploy.**
 
 ## Tech Stack
 
@@ -84,15 +106,7 @@ A WeChat-style, text-only, **end-to-end encrypted** group chat application built
 
 ## Persistent Storage on Railway
 
-By default, Railway's filesystem is **ephemeral** — it is wiped on every redeploy, which means your SQLite database (users, groups, messages) will be lost.
-
-To persist data across deploys:
-
-1. In your Railway project, go to **New** → **Volume**.
-2. Mount the volume at `/data`.
-3. In the **Variables** tab, add: `DB_PATH` = `/data/gaychat.db`.
-
-Railway will now store the database file on the mounted volume and it will survive redeploys.
+See the **⚠️ Persistent Storage on Railway** section above — it is critical to set this up before going live.
 
 ---
 

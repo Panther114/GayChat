@@ -456,7 +456,10 @@ async function buildMessageRow(msg) {
 
   // Whisper — hide if not recipient or sender
   if (msg.type === 'whisper') {
-    const recipients = msg.whisperTo ? msg.whisperTo.split(',') : [];
+    let recipients = [];
+    if (msg.whisperTo) {
+      try { recipients = JSON.parse(msg.whisperTo); } catch { recipients = msg.whisperTo.split(','); }
+    }
     if (!isOwn && !recipients.includes(currentUser.id)) return document.createTextNode('');
   }
 
@@ -1114,33 +1117,47 @@ function showConfirm(title, message, onConfirm) {
 }
 
 // ── Search messages ───────────────────────────────────────────────────────────
+function highlightText(el, term) {
+  // DOM-based highlighting — no innerHTML with user content
+  el.textContent = el.textContent; // reset to plain text
+  if (!term) return;
+  const text = el.textContent;
+  const lc = text.toLowerCase();
+  const tl = term.toLowerCase();
+  el.textContent = '';
+  let idx = 0;
+  let found;
+  while ((found = lc.indexOf(tl, idx)) !== -1) {
+    if (found > idx) el.appendChild(document.createTextNode(text.slice(idx, found)));
+    const mark = document.createElement('mark');
+    mark.className = 'search-highlight';
+    mark.textContent = text.slice(found, found + term.length);
+    el.appendChild(mark);
+    idx = found + term.length;
+  }
+  if (idx < text.length) el.appendChild(document.createTextNode(text.slice(idx)));
+}
+
 function searchMessages(term) {
   const rows = messagesArea().querySelectorAll('.msg-row');
   let count = 0;
   rows.forEach(row => {
     const textEl = row.querySelector('.msg-text');
     if (!textEl) return;
+    // Restore plain text first (remove marks)
+    textEl.textContent = textEl.textContent;
+    if (!term) { row.style.display = ''; return; }
     const text = textEl.textContent;
-    if (!term) {
-      textEl.innerHTML = escapeHtml(text);
-      row.style.display = '';
-      return;
-    }
-    const lc = text.toLowerCase();
-    if (lc.includes(term.toLowerCase())) {
+    if (text.toLowerCase().includes(term.toLowerCase())) {
       count++;
       row.style.display = '';
-      // Highlight
-      const regex = new RegExp('(' + escapeRegex(term) + ')', 'gi');
-      textEl.innerHTML = escapeHtml(text).replace(regex, '<mark class="search-highlight">$1</mark>');
+      highlightText(textEl, term);
     } else {
       row.style.display = 'none';
     }
   });
   $('search-results-count').textContent = term ? count + ' result' + (count !== 1 ? 's' : '') : '';
 }
-
-function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 // ── Export chat ───────────────────────────────────────────────────────────────
 async function exportChat() {
