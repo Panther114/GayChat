@@ -866,10 +866,85 @@ kbd { background: #1a1a2e; border: 1px solid #333355; border-radius: 4px; paddin
   .sidebar-toggle { display: flex; }
   .right-panel { position: fixed; right: 0; top: 0; height: 100%; z-index: 100; transform: translateX(100%); }
   .right-panel.open { transform: translateX(0); }
+
+  /* Improve message bubble readability on mobile */
+  .msg-content { max-width: 80%; }
+
+  /* Better touch targets for mobile */
+  .btn-icon { min-width: 40px; min-height: 40px; }
+  .btn-send { width: 42px; height: 42px; }
+
+  /* Adjust input bar for mobile */
+  .message-input-bar { padding: 8px; }
+  .message-input-bar textarea { font-size: 16px; } /* Prevent zoom on iOS */
+
+  /* Context menu positioning for mobile */
+  .ctx-menu { min-width: 140px; }
+
+  /* Improve emoji picker on mobile */
+  .emoji-picker {
+    bottom: 62px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 240px;
+  }
+
+  /* Optimize modals for mobile */
+  .modal {
+    max-width: calc(100vw - 32px);
+    margin: 16px;
+  }
+
+  /* Better message images on mobile */
+  .msg-image { max-width: 200px; max-height: 140px; }
+  .msg-image-locked { width: 200px; height: 100px; }
+
+  /* Improve scrollbar for touch devices */
+  .messages-area {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Better tap highlight */
+  * {
+    -webkit-tap-highlight-color: rgba(108, 99, 255, 0.1);
+  }
+
+  /* Prevent pull-to-refresh on mobile browsers */
+  body {
+    overscroll-behavior-y: contain;
+  }
 }
 @media (max-width: 480px) {
   .auth-card { margin: 16px; padding: 24px 18px; }
-  .modal { margin: 16px; max-width: calc(100vw - 32px); }
+
+  /* Smaller bubbles on very small screens */
+  .msg-content { max-width: 85%; }
+  .msg-bubble { font-size: 14px; padding: 6px 10px; }
+
+  /* Compact chat topbar */
+  .chat-topbar { padding: 8px 10px; }
+  .chat-topbar-name { font-size: 14px; }
+
+  /* Smaller avatars */
+  .msg-avatar { width: 24px; height: 24px; font-size: 9px; }
+
+  /* Adjust messages area padding */
+  .messages-area { padding: 6px 8px; }
+
+  /* Better toast positioning on small screens */
+  .toast {
+    bottom: 16px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+  }
+
+  /* Adjust scroll button for small screens */
+  .scroll-bottom-btn {
+    bottom: 100px;
+    right: 12px;
+  }
 }
 
 /* ── Toast notifications ─────────────────────────────────────────────── */

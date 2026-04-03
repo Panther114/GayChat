@@ -529,7 +529,7 @@ async function buildMessageRow(msg) {
       const rb = document.createElement('div');
       rb.className = 'msg-reply-box';
       rb.innerHTML = '<span class="msg-reply-sender">' + escapeHtml(rData.senderName || '') + '</span>' + escapeHtml(truncate(rData.preview || '', 60));
-      rb.addEventListener('click', () => scrollToMessage(rData.id || rData.messageId));
+      rb.addEventListener('click', () => scrollToMessage(rData.id));
       bubble.appendChild(rb);
     } catch { /* malformed reply data */ }
   }
@@ -761,7 +761,7 @@ async function doSend(text) {
     let replyToData = null;
     if (replyingTo) {
       replyToData = JSON.stringify({
-        messageId: replyingTo.id,
+        id: replyingTo.id,
         senderName: replyingTo.senderName,
         preview: replyingTo.preview,
       });
