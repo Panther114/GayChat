@@ -25,14 +25,55 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server);
 
-// ── Content Security Policy ───────────────────────────────────────────────────
+// ── Content Security Policy + HSTS ───────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws: wss:;"
   );
+  // Only send HSTS over HTTPS (production / Railway)
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT != null) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+  }
   next();
 });
+
+// ── Login brute-force protection ──────────────────────────────────────────────
+// Track failed login attempts per IP. 10 failures within a 15-minute window
+// locks the IP for the remainder of that window.
+const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const LOGIN_MAX_ATTEMPTS   = 10;
+const loginAttempts = new Map(); // ip -> { count, windowStart }
+
+// Periodically prune stale entries so the map doesn't grow unboundedly.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of loginAttempts) {
+    if (now - data.windowStart > LOGIN_ATTEMPT_WINDOW) loginAttempts.delete(ip);
+  }
+}, 5 * 60 * 1000); // every 5 minutes
+
+function recordFailedLogin(ip) {
+  const now = Date.now();
+  const data = loginAttempts.get(ip);
+  if (!data || now - data.windowStart > LOGIN_ATTEMPT_WINDOW) {
+    loginAttempts.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  data.count++;
+}
+
+function isLoginBlocked(ip) {
+  const now = Date.now();
+  const data = loginAttempts.get(ip);
+  if (!data) return false;
+  if (now - data.windowStart > LOGIN_ATTEMPT_WINDOW) { loginAttempts.delete(ip); return false; }
+  return data.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function clearLoginAttempts(ip) {
+  loginAttempts.delete(ip);
+}
 
 // ── Database ──────────────────────────────────────────────────────────────────
 const DB_PATH = process.env.DB_PATH || './gaychat.db';
@@ -91,6 +132,7 @@ const migrations = [
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
+  "ALTER TABLE messages ADD COLUMN edited_at TEXT",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch { /* column/table already exists */ }
@@ -106,8 +148,11 @@ function getOrCreateSessionSecret() {
     db.prepare("INSERT INTO _config (key, value) VALUES ('session_secret', ?)").run(newSecret);
     return newSecret;
   } catch (err) {
-    console.error('getOrCreateSessionSecret error:', err);
-    return 'gaychat-dev-secret';
+    // Do NOT fall back to a predictable hard-coded string. Generate a random
+    // ephemeral secret instead — existing sessions will be invalidated after
+    // a restart but the server remains secure.
+    console.error('getOrCreateSessionSecret error — using ephemeral random secret (sessions will not survive restart):', err);
+    return crypto.randomBytes(32).toString('hex');
   }
 }
 const SESSION_SECRET = getOrCreateSessionSecret();
@@ -164,21 +209,26 @@ const stmts = {
   getLastMessages: db.prepare(`
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
-           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at
+           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.group_id = ?
-    ORDER BY m.created_at DESC
+    ORDER BY m.created_at DESC, m.id DESC
     LIMIT ?
   `),
   getMessagesBefore: db.prepare(`
+    WITH ref AS (SELECT created_at, id FROM messages WHERE id = ?)
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
-           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at
+           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at
     FROM messages m
     JOIN users u ON m.sender_id = u.id
-    WHERE m.group_id = ? AND m.created_at < (SELECT created_at FROM messages WHERE id = ?)
-    ORDER BY m.created_at DESC
+    CROSS JOIN ref
+    WHERE m.group_id = ? AND (
+      m.created_at < ref.created_at OR
+      (m.created_at = ref.created_at AND m.id < ref.id)
+    )
+    ORDER BY m.created_at DESC, m.id DESC
     LIMIT ?
   `),
   insertMessage: db.prepare(
@@ -186,12 +236,18 @@ const stmts = {
   ),
   findMessageById: db.prepare('SELECT * FROM messages WHERE id = ?'),
   deleteMessage: db.prepare('DELETE FROM messages WHERE id = ?'),
+  updateMessage: db.prepare(
+    'UPDATE messages SET encrypted_content = ?, iv = ?, edited_at = ? WHERE id = ?'
+  ),
 
   // Owner controls
   deleteMember: db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?'),
   deleteGroupMessages: db.prepare('DELETE FROM messages WHERE group_id = ?'),
   deleteGroupMembers: db.prepare('DELETE FROM group_members WHERE group_id = ?'),
   deleteGroup: db.prepare('DELETE FROM group_chats WHERE id = ?'),
+
+  // Utility: all group IDs a user belongs to (for scoped broadcasts)
+  getUserGroupIds: db.prepare('SELECT group_id FROM group_members WHERE user_id = ?'),
 };
 
 // ── Session Middleware ────────────────────────────────────────────────────────
@@ -292,6 +348,7 @@ function formatMessage(m) {
     filename: m.filename || null,
     whisperTo: m.whisper_to || null,
     createdAt: m.created_at,
+    editedAt: m.edited_at || null,
   };
 }
 
@@ -357,17 +414,26 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
+  // Brute-force protection: block IP after too many failed attempts
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  if (isLoginBlocked(clientIp)) {
+    return res.status(429).json({ error: 'Too many failed login attempts. Please try again later.' });
+  }
+
   const user = stmts.findUserByUsername.get(username);
   if (!user) {
+    recordFailedLogin(clientIp);
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   try {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
+      recordFailedLogin(clientIp);
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    clearLoginAttempts(clientIp);
     req.session.userId = user.id;
     req.session.save(() => {
       res.json(formatUser(user));
@@ -400,9 +466,19 @@ app.patch('/api/auth/profile', (req, res) => {
   }
 
   if (profilePicture !== undefined && profilePicture !== null) {
-    // Validate profile picture is a data URL and size limit (2MB base64 = ~1.5MB actual)
-    if (typeof profilePicture !== 'string' || !profilePicture.startsWith('data:image/')) {
-      return res.status(400).json({ error: 'Invalid profile picture format' });
+    // Only allow safe raster image MIME types — reject SVG and other types
+    // that could carry embedded scripts.
+    const ALLOWED_PIC_PREFIXES = [
+      'data:image/jpeg;base64,',
+      'data:image/png;base64,',
+      'data:image/gif;base64,',
+      'data:image/webp;base64,',
+    ];
+    if (
+      typeof profilePicture !== 'string' ||
+      !ALLOWED_PIC_PREFIXES.some(p => profilePicture.startsWith(p))
+    ) {
+      return res.status(400).json({ error: 'Invalid profile picture format. Only JPEG, PNG, GIF, and WebP are allowed.' });
     }
     // Base64 encoded 2MB max
     if (profilePicture.length > 2 * 1024 * 1024 * 1.4) {
@@ -421,9 +497,14 @@ app.patch('/api/auth/profile', (req, res) => {
         s.profilePicture = user.profile_picture;
       }
     }
-    // Notify all connected sockets for this user
-    io.emit('user_updated', formatUser(user));
-    res.json(formatUser(user));
+    // Emit user_updated only to rooms (groups) this user belongs to — not globally.
+    // This prevents leaking profile data to users who share no groups with them.
+    const userGroupIds = stmts.getUserGroupIds.all(userId).map(r => r.group_id);
+    const payload = formatUser(user);
+    for (const gid of userGroupIds) {
+      io.to(gid).emit('user_updated', payload);
+    }
+    res.json(payload);
   } catch (err) {
     console.error('Profile update error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -431,12 +512,16 @@ app.patch('/api/auth/profile', (req, res) => {
 });
 
 // DELETE /api/auth/account — delete account
+const deleteAccountTx = db.transaction((userId) => {
+  stmts.deleteUserMemberships.run(userId);
+  stmts.deleteUser.run(userId);
+});
+
 app.delete('/api/auth/account', (req, res) => {
   const userId = req.session.userId;
 
   try {
-    stmts.deleteUserMemberships.run(userId);
-    stmts.deleteUser.run(userId);
+    deleteAccountTx(userId);
     req.session.destroy(() => {
       res.json({ ok: true });
     });
@@ -455,7 +540,12 @@ app.get('/api/admin/users', (req, res) => {
   }
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!token || token !== secret) {
+  // Use timing-safe comparison to prevent timing-based secret enumeration
+  const secretBuf = Buffer.from(secret);
+  const tokenBuf  = Buffer.from(token);
+  const valid = token.length === secret.length &&
+    crypto.timingSafeEqual(tokenBuf, secretBuf);
+  if (!valid) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const users = stmts.getAllUsers.all();
@@ -598,7 +688,8 @@ app.get('/api/groups/:groupId/messages', (req, res) => {
 
   let rows;
   if (before) {
-    rows = stmts.getMessagesBefore.all(groupId, before, limit).reverse();
+    // CTE parameter order: (refMessageId, groupId, limit)
+    rows = stmts.getMessagesBefore.all(before, groupId, limit).reverse();
   } else {
     rows = stmts.getLastMessages.all(groupId, limit).reverse();
   }
@@ -650,6 +741,39 @@ app.delete('/api/groups/:groupId/messages/:messageId', (req, res) => {
 
   stmts.deleteMessage.run(messageId);
   io.to(groupId).emit('message_deleted', { messageId, groupId });
+  res.json({ ok: true });
+});
+
+// PATCH /api/groups/:groupId/messages/:messageId — edit a message (sender only, text/whisper)
+app.patch('/api/groups/:groupId/messages/:messageId', (req, res) => {
+  const { groupId, messageId } = req.params;
+  const userId = req.session.userId;
+  const { encryptedContent, iv } = req.body;
+
+  if (!encryptedContent || typeof encryptedContent !== 'string' || !iv || typeof iv !== 'string') {
+    return res.status(400).json({ error: 'encryptedContent and iv are required' });
+  }
+  if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
+    return res.status(400).json({ error: 'Message too large.' });
+  }
+
+  const member = stmts.isMember.get(groupId, userId);
+  if (!member) return res.status(403).json({ error: 'Not a member of this group' });
+
+  const message = stmts.findMessageById.get(messageId);
+  if (!message || message.group_id !== groupId) {
+    return res.status(404).json({ error: 'Message not found' });
+  }
+  if (message.sender_id !== userId) {
+    return res.status(403).json({ error: 'You can only edit your own messages' });
+  }
+  if (message.type !== 'text' && message.type !== 'whisper') {
+    return res.status(400).json({ error: 'Only text messages can be edited' });
+  }
+
+  const editedAt = new Date().toISOString();
+  stmts.updateMessage.run(encryptedContent, iv, editedAt, messageId);
+  io.to(groupId).emit('message_edited', { messageId, groupId, encryptedContent, iv, editedAt });
   res.json({ ok: true });
 });
 
@@ -753,6 +877,7 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
     filename: safeFilename,
     whisperTo: null,
     createdAt,
+    editedAt: null,
   };
 
   io.to(groupId).emit('new_message', payload);
@@ -961,6 +1086,7 @@ io.on('connection', (socket) => {
       filename: null,
       whisperTo: null,
       createdAt,
+      editedAt: null,
     };
 
     io.to(groupId).emit('new_message', payload);
@@ -977,6 +1103,28 @@ io.on('connection', (socket) => {
   socket.on('send_whisper', ({ groupId, encryptedContent, iv, whisperTo, replyTo }) => {
     if (!groupId || !encryptedContent || !iv || !Array.isArray(whisperTo)) return;
 
+    // Rate limiting (same limits as send_message, keyed by userId)
+    const rateData = socketRateMap.get(socket.userId);
+    if (rateData) {
+      const now = Date.now();
+      rateData.timestamps = rateData.timestamps.filter(t => now - t < 5000);
+      if (rateData.timestamps.length >= 10) {
+        socket.emit('error', { message: 'Rate limit exceeded. Please slow down.' });
+        return;
+      }
+      if (encryptedContent === rateData.lastContent) {
+        rateData.repeatCount = (rateData.repeatCount || 0) + 1;
+        if (rateData.repeatCount >= 3) {
+          socket.emit('error', { message: 'Don\'t send the same message repeatedly.' });
+          return;
+        }
+      } else {
+        rateData.repeatCount = 0;
+        rateData.lastContent = encryptedContent;
+      }
+      rateData.timestamps.push(now);
+    }
+
     const member = stmts.isMember.get(groupId, socket.userId);
     if (!member) {
       socket.emit('error', { message: 'Not a member of this group' });
@@ -986,6 +1134,14 @@ io.on('connection', (socket) => {
     if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
       socket.emit('error', { message: 'Message too large.' });
       return;
+    }
+
+    // Validate that every whisper recipient is a member of this group
+    for (const recipId of whisperTo) {
+      if (!stmts.isMember.get(groupId, String(recipId))) {
+        socket.emit('error', { message: 'One or more whisper recipients are not group members.' });
+        return;
+      }
     }
 
     const msgId = uuidv4();
@@ -1014,10 +1170,11 @@ io.on('connection', (socket) => {
       filename: null,
       whisperTo: whisperToStr,
       createdAt,
+      editedAt: null,
     };
 
     // Send to sender + recipients only
-    const recipientIds = new Set([socket.userId, ...whisperTo]);
+    const recipientIds = new Set([socket.userId, ...whisperTo.map(String)]);
     const roomSockets = getPresence(groupId);
     for (const sid of roomSockets) {
       const s = io.sockets.sockets.get(sid);
@@ -1041,7 +1198,6 @@ io.on('connection', (socket) => {
   // ── disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     console.log(`Socket disconnected: ${socket.username}`);
-    // Note: rate map is per-user; only remove if no other sockets for this user
 
     if (socket.currentRoom) {
       removePresence(socket.currentRoom, socket.id);
@@ -1055,6 +1211,24 @@ io.on('connection', (socket) => {
         groupId: socket.currentRoom,
         onlineUserIds: [...onlineUserIds],
       });
+    }
+
+    // Clean up rate-limit state for this user when no more sockets are active.
+    // Prune timestamps older than the rate window; if none remain (and no
+    // repeated-message flag is set) remove the entry entirely to prevent the
+    // map from growing unboundedly (#4 memory leak, #30 stale state).
+    const hasOtherSockets = [...io.sockets.sockets.values()].some(
+      s => s !== socket && s.userId === socket.userId
+    );
+    if (!hasOtherSockets) {
+      const rateData = socketRateMap.get(socket.userId);
+      if (rateData) {
+        const now = Date.now();
+        rateData.timestamps = rateData.timestamps.filter(t => now - t < 5000);
+        if (rateData.timestamps.length === 0) {
+          socketRateMap.delete(socket.userId);
+        }
+      }
     }
   });
 });
