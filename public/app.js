@@ -148,6 +148,49 @@ function playNotifSound() {
   } catch { /* audio not available */ }
 }
 
+// ── Page title notification ──────────────────────────────────────────────────
+function updatePageTitleNotification() {
+  if (unreadNotificationCount > 0) {
+    if (!titleBlinkInterval) {
+      let showingNotif = true;
+      titleBlinkInterval = setInterval(() => {
+        if (showingNotif) {
+          document.title = `(${unreadNotificationCount}) New ${unreadNotificationCount === 1 ? 'message' : 'messages'}`;
+        } else {
+          document.title = originalPageTitle;
+        }
+        showingNotif = !showingNotif;
+      }, 1500);
+    }
+  } else {
+    if (titleBlinkInterval) {
+      clearInterval(titleBlinkInterval);
+      titleBlinkInterval = null;
+    }
+    document.title = originalPageTitle;
+  }
+}
+
+function clearPageTitleNotification() {
+  unreadNotificationCount = 0;
+  updatePageTitleNotification();
+}
+
+// ── Image Viewer ──────────────────────────────────────────────────────────────
+function showImageViewer(imageUrl) {
+  const modal = $('image-viewer-modal');
+  const img = $('image-viewer-img');
+  img.src = imageUrl;
+  modal.hidden = false;
+}
+
+function hideImageViewer() {
+  const modal = $('image-viewer-modal');
+  const img = $('image-viewer-img');
+  modal.hidden = true;
+  img.src = '';
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentGroupId = null;
@@ -166,6 +209,9 @@ let allMessages = [];
 let oldestMessageId = null;
 let loadingOlder = false;
 let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
+let originalPageTitle = 'GayChat 🏳️‍🌈';
+let unreadNotificationCount = 0;
+let titleBlinkInterval = null;
 
 // Decryption failure text constants (must match renderMsgContent output)
 const MSG_NO_KEY = '[No key — set group key to decrypt]';
@@ -201,6 +247,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupEmojiPicker();
   setupKeyboardShortcuts();
+
+  // Clear page title notification when page is focused
+  window.addEventListener('focus', clearPageTitleNotification);
+  window.addEventListener('blur', () => {
+    // Start tracking unread when page loses focus
+  });
 });
 
 // ── Load groups ───────────────────────────────────────────────────────────────
@@ -322,6 +374,9 @@ async function selectGroup(groupId) {
   const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
   $('owner-actions').hidden = !isOwner;
   $('member-actions').hidden = isOwner;
+  // Show clear history button if owner OR if member with permission
+  const canClearHistory = isOwner || (currentGroupData && currentGroupData.allowMemberClear);
+  $('common-actions').hidden = !canClearHistory;
   if (isOwner && currentGroupData) {
     $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
   }
@@ -604,6 +659,11 @@ async function renderMsgContent(msg, textEl, bubble) {
         img.className = 'msg-image';
         img.src = url;
         img.alt = 'image';
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showImageViewer(url);
+        });
         bubble.appendChild(img);
       } else {
         const locked = document.createElement('div');
@@ -881,6 +941,12 @@ function initSocket() {
   });
 
   socket.on('new_message', async (msg) => {
+    // Increment page title notification if document is not focused
+    if (!document.hasFocus() && msg.senderId !== currentUser.id) {
+      unreadNotificationCount++;
+      updatePageTitleNotification();
+    }
+
     if (msg.groupId !== currentGroupId) {
       // Increment unread for non-active group
       unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
@@ -1079,6 +1145,8 @@ function setupKeyboardShortcuts() {
       $('ctx-menu').hidden = true;
       $('emoji-picker').hidden = true;
       $('whisper-picker').hidden = true;
+      // Close image viewer
+      hideImageViewer();
       // Cancel reply
       replyingTo = null;
       $('reply-preview-bar').hidden = true;
@@ -1612,6 +1680,11 @@ function setupEventListeners() {
     const first = messagesArea().querySelector('.msg-row.unread');
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
+
+  // Image viewer
+  $('image-viewer-close').addEventListener('click', hideImageViewer);
+  $('image-viewer-overlay').addEventListener('click', hideImageViewer);
+  $('image-viewer-img').addEventListener('click', hideImageViewer);
 }
 
 async function loadOlderMessages() {
