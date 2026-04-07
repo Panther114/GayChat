@@ -324,10 +324,16 @@ body.chat-body {
   justify-content: center;
   gap: 12px;
   color: var(--text-muted);
+  position: relative;
 }
 .chat-empty-icon { font-size: 56px; opacity: .3; }
 .chat-empty-title { font-size: 18px; font-weight: 600; color: var(--text-secondary); }
 .chat-empty-sub { font-size: 13px; color: var(--text-muted); }
+
+/* Mobile toggle buttons in empty state - hidden by default */
+.mobile-only-toggle {
+  display: none;
+}
 
 .chat-active { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
@@ -934,6 +940,20 @@ kbd { background: #1a1a2e; border: 1px solid #333355; border-radius: 4px; paddin
   .sidebar-toggle { display: flex; }
   .right-panel { position: fixed; right: 0; top: 0; height: 100%; z-index: 100; transform: translateX(100%); }
   .right-panel.open { transform: translateX(0); }
+
+  /* Show toggle buttons on empty state for mobile */
+  .mobile-only-toggle {
+    display: flex;
+    position: absolute;
+    top: 10px;
+    z-index: 50;
+  }
+  #sidebar-toggle-empty {
+    left: 10px;
+  }
+  #right-panel-toggle-empty {
+    right: 10px;
+  }
 
   /* Improve message bubble readability on mobile */
   .msg-content { max-width: 80%; }

@@ -1766,6 +1766,16 @@ function setupEventListeners() {
     $('right-panel').classList.toggle('open');
   });
 
+  // Mobile empty state toggles
+  $('sidebar-toggle-empty').addEventListener('click', () => {
+    $('sidebar').classList.toggle('open');
+    $('sidebar-overlay').hidden = !$('sidebar').classList.contains('open');
+  });
+
+  $('right-panel-toggle-empty').addEventListener('click', () => {
+    $('right-panel').classList.toggle('open');
+  });
+
   // Mobile sidebar
   $('sidebar-toggle').addEventListener('click', () => {
     $('sidebar').classList.toggle('open');
