@@ -872,7 +872,8 @@ async function startEditMessage(msg, currentPlaintext) {
   const editInput = document.createElement('textarea');
   editInput.className = 'msg-edit-input';
   editInput.value = currentPlaintext;
-  editInput.rows = Math.max(1, Math.ceil(currentPlaintext.length / 50));
+  const CHARS_PER_ROW = 50; // approximate chars per row for initial textarea height
+  editInput.rows = Math.max(1, Math.ceil(currentPlaintext.length / CHARS_PER_ROW));
   const editSave = document.createElement('button');
   editSave.className = 'msg-edit-save';
   editSave.textContent = 'Save';

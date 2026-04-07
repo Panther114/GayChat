@@ -133,6 +133,8 @@ const migrations = [
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
   "ALTER TABLE messages ADD COLUMN edited_at TEXT",
+  // Composite index to support efficient pagination ORDER BY (created_at DESC, id DESC)
+  "CREATE INDEX IF NOT EXISTS idx_messages_group_pagination ON messages (group_id, created_at DESC, id DESC)",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch { /* column/table already exists */ }
