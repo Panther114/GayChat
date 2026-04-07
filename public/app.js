@@ -239,8 +239,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Set user display
   $('user-username').textContent = currentUser.username;
   const ua = $('user-avatar');
-  ua.textContent = currentUser.username[0].toUpperCase();
-  ua.style.background = currentUser.iconColor;
+  if (currentUser.profilePicture) {
+    ua.style.background = 'none';
+    const img = document.createElement('img');
+    img.src = currentUser.profilePicture;
+    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+    ua.appendChild(img);
+  } else {
+    ua.textContent = currentUser.username[0].toUpperCase();
+    ua.style.background = currentUser.iconColor;
+  }
 
   await loadGroups();
   initSocket();
@@ -558,8 +566,18 @@ async function buildMessageRow(msg) {
   // Avatar
   const av = document.createElement('div');
   av.className = 'msg-avatar';
-  av.style.background = msg.senderColor || '#4A90D9';
-  av.textContent = (msg.senderName || '?')[0].toUpperCase();
+  // Look up profile picture from members list
+  const member = members.find(m => m.id === msg.senderId);
+  if (member && member.profilePicture) {
+    av.style.background = 'none';
+    const img = document.createElement('img');
+    img.src = member.profilePicture;
+    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+    av.appendChild(img);
+  } else {
+    av.style.background = msg.senderColor || '#4A90D9';
+    av.textContent = (msg.senderName || '?')[0].toUpperCase();
+  }
 
   const content = document.createElement('div');
   content.className = 'msg-content';
