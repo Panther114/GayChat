@@ -17,7 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const MAX_ENCRYPTED_CONTENT_LENGTH = 1_500_000; // ~1MB raw + base64 overhead
+const MAX_ENCRYPTED_CONTENT_LENGTH = 34_000_000_000; // ~25GB + base64 overhead (25GB * 1.37)
 
 // ── App & Server ──────────────────────────────────────────────────────────────
 const app = express();
@@ -90,6 +90,7 @@ const migrations = [
   "ALTER TABLE messages ADD COLUMN whisper_to TEXT",
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+  "ALTER TABLE users ADD COLUMN profile_picture TEXT",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch { /* column/table already exists */ }
@@ -120,7 +121,7 @@ const stmts = {
     'INSERT INTO users (id, username, password_hash, icon_color) VALUES (?, ?, ?, ?)'
   ),
   updateUser: db.prepare(
-    'UPDATE users SET username = COALESCE(?, username), icon_color = COALESCE(?, icon_color) WHERE id = ?'
+    'UPDATE users SET username = COALESCE(?, username), icon_color = COALESCE(?, icon_color), profile_picture = COALESCE(?, profile_picture) WHERE id = ?'
   ),
   deleteUser: db.prepare('DELETE FROM users WHERE id = ?'),
   deleteUserMemberships: db.prepare('DELETE FROM group_members WHERE user_id = ?'),
@@ -149,7 +150,7 @@ const stmts = {
     ORDER BY g.created_at DESC
   `),
   getGroupMembers: db.prepare(`
-    SELECT u.id, u.username, u.icon_color
+    SELECT u.id, u.username, u.icon_color, u.profile_picture
     FROM users u
     JOIN group_members gm ON u.id = gm.user_id
     WHERE gm.group_id = ?
@@ -209,7 +210,7 @@ const sessionMiddleware = session({
 
 // ── Express Middleware ────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '6mb' }));
+app.use(express.json({ limit: '30gb' }));
 app.use(sessionMiddleware);
 
 // ── CSRF Protection ───────────────────────────────────────────────────────────
@@ -274,7 +275,7 @@ app.use('/api', requireAuth);
 
 // ── Helper: format objects ────────────────────────────────────────────────────
 function formatUser(user) {
-  return { id: user.id, username: user.username, iconColor: user.icon_color };
+  return { id: user.id, username: user.username, iconColor: user.icon_color, profilePicture: user.profile_picture || null };
 }
 
 function formatMessage(m) {
@@ -383,10 +384,10 @@ app.post('/api/auth/logout', (req, res) => {
   });
 });
 
-// PATCH /api/auth/profile — update username / iconColor
+// PATCH /api/auth/profile — update username / iconColor / profilePicture
 app.patch('/api/auth/profile', (req, res) => {
   const userId = req.session.userId;
-  const { username, iconColor } = req.body;
+  const { username, iconColor, profilePicture } = req.body;
 
   if (username !== undefined) {
     if (typeof username !== 'string' || username.length < 2 || username.length > 32) {
@@ -398,14 +399,26 @@ app.patch('/api/auth/profile', (req, res) => {
     }
   }
 
+  if (profilePicture !== undefined && profilePicture !== null) {
+    // Validate profile picture is a data URL and size limit (2MB base64 = ~1.5MB actual)
+    if (typeof profilePicture !== 'string' || !profilePicture.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid profile picture format' });
+    }
+    // Base64 encoded 2MB max
+    if (profilePicture.length > 2 * 1024 * 1024 * 1.4) {
+      return res.status(400).json({ error: 'Profile picture too large (max 2MB)' });
+    }
+  }
+
   try {
-    stmts.updateUser.run(username || null, iconColor || null, userId);
+    stmts.updateUser.run(username || null, iconColor || null, profilePicture !== undefined ? profilePicture : null, userId);
     const user = stmts.findUserById.get(userId);
     // Update in-memory socket state for all connected sockets of this user
     for (const [, s] of io.sockets.sockets) {
       if (s.userId === userId) {
         s.username = user.username;
         s.iconColor = user.icon_color;
+        s.profilePicture = user.profile_picture;
       }
     }
     // Notify all connected sockets for this user
@@ -510,6 +523,7 @@ app.post('/api/groups/join', (req, res) => {
     userId,
     username: user.username,
     iconColor: user.icon_color,
+    profilePicture: user.profile_picture || null,
     groupId: group.id,
   });
 
@@ -682,6 +696,7 @@ app.get('/api/groups/:groupId/members', (req, res) => {
       id: u.id,
       username: u.username,
       iconColor: u.icon_color,
+      profilePicture: u.profile_picture || null,
     }))
   );
 });
@@ -712,7 +727,7 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
 
   // Enforce cap
   if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
-    return res.status(400).json({ error: 'File too large. Maximum size is 1MB.' });
+    return res.status(400).json({ error: 'File too large. Maximum size is 25GB.' });
   }
   const msgId = uuidv4();
   const createdAt = new Date().toISOString();
@@ -838,6 +853,7 @@ io.use((socket, next) => {
   }
   socket.username = user.username;
   socket.iconColor = user.icon_color;
+  socket.profilePicture = user.profile_picture;
   next();
 });
 

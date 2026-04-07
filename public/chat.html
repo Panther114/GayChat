@@ -34,6 +34,8 @@
 
   <main class="chat-panel" id="chat-panel">
     <div class="chat-empty" id="chat-empty">
+      <button class="btn-icon sidebar-toggle mobile-only-toggle" id="sidebar-toggle-empty" title="Menu">☰</button>
+      <button class="btn-icon right-panel-toggle mobile-only-toggle" id="right-panel-toggle-empty" title="Groups">📋</button>
       <div class="chat-empty-icon">💬</div>
       <p class="chat-empty-title">Select a group to start chatting</p>
       <p class="chat-empty-sub">Your messages are end-to-end encrypted</p>
@@ -127,7 +129,6 @@
       <h4 class="members-title">Members</h4>
       <ul class="members-list" id="members-list"></ul>
       <div class="right-panel-owner-actions" id="owner-actions" hidden>
-        <button class="btn-action-sm btn-clear-history" id="clear-history-btn">🗑 Clear Chat History</button>
         <label class="toggle-label">
           <input type="checkbox" id="allow-member-clear-toggle" />
           Allow members to clear history
@@ -137,6 +138,9 @@
       </div>
       <div class="right-panel-member-actions" id="member-actions" hidden>
         <button class="btn-action-sm btn-leave" id="leave-group-btn">🚪 Leave Group</button>
+      </div>
+      <div class="right-panel-common-actions" id="common-actions" hidden>
+        <button class="btn-action-sm btn-clear-history" id="clear-history-btn">🗑 Clear Chat History</button>
       </div>
     </div>
     <div class="right-panel-empty" id="right-panel-empty">
@@ -204,10 +208,32 @@
         <button class="btn-primary btn-sm" id="profile-save-username">Save</button>
       </div>
       <div class="form-group">
-        <label>Change Icon Color</label>
-        <div class="color-pick-row">
-          <input type="color" id="profile-color" value="#4A90D9" />
-          <button class="btn-primary btn-sm" id="profile-save-color">Save</button>
+        <label>Profile Picture</label>
+        <div class="profile-picture-selector">
+          <label class="profile-picture-option">
+            <input type="radio" name="profile-picture-type" value="color" checked />
+            <span>Color + Initial</span>
+          </label>
+          <label class="profile-picture-option">
+            <input type="radio" name="profile-picture-type" value="image" />
+            <span>Upload Image</span>
+          </label>
+        </div>
+        <div id="profile-picture-color-section">
+          <label>Icon Color</label>
+          <div class="color-pick-row">
+            <input type="color" id="profile-color" value="#4A90D9" />
+            <button class="btn-primary btn-sm" id="profile-save-color">Save</button>
+          </div>
+        </div>
+        <div id="profile-picture-upload-section" hidden>
+          <label>Upload Profile Picture (max 2MB)</label>
+          <input type="file" id="profile-picture-input" accept="image/*" />
+          <div id="profile-picture-preview" hidden>
+            <img id="profile-picture-preview-img" src="" alt="Preview" style="max-width: 100px; max-height: 100px; border-radius: 50%;" />
+          </div>
+          <button class="btn-primary btn-sm" id="profile-save-picture">Save Picture</button>
+          <button class="btn-secondary btn-sm" id="profile-remove-picture">Remove Picture</button>
         </div>
       </div>
       <p class="form-error" id="profile-error"></p>
@@ -249,6 +275,14 @@
   <div class="ctx-menu" id="ctx-menu" hidden>
     <button class="ctx-item" id="ctx-reply">↩ Reply</button>
     <button class="ctx-item" id="ctx-copy">📋 Copy Text</button>
+  </div>
+
+  <div class="image-viewer-modal" id="image-viewer-modal" hidden>
+    <div class="image-viewer-overlay" id="image-viewer-overlay"></div>
+    <div class="image-viewer-container">
+      <button class="image-viewer-close" id="image-viewer-close">✕</button>
+      <img class="image-viewer-img" id="image-viewer-img" src="" alt="Full size image" />
+    </div>
   </div>
 
   <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>

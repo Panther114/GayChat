@@ -148,6 +148,49 @@ function playNotifSound() {
   } catch { /* audio not available */ }
 }
 
+// ── Page title notification ──────────────────────────────────────────────────
+function updatePageTitleNotification() {
+  if (unreadNotificationCount > 0) {
+    if (!titleBlinkInterval) {
+      let showingNotif = true;
+      titleBlinkInterval = setInterval(() => {
+        if (showingNotif) {
+          document.title = `(${unreadNotificationCount}) New ${unreadNotificationCount === 1 ? 'message' : 'messages'}`;
+        } else {
+          document.title = originalPageTitle;
+        }
+        showingNotif = !showingNotif;
+      }, 1500);
+    }
+  } else {
+    if (titleBlinkInterval) {
+      clearInterval(titleBlinkInterval);
+      titleBlinkInterval = null;
+    }
+    document.title = originalPageTitle;
+  }
+}
+
+function clearPageTitleNotification() {
+  unreadNotificationCount = 0;
+  updatePageTitleNotification();
+}
+
+// ── Image Viewer ──────────────────────────────────────────────────────────────
+function showImageViewer(imageUrl) {
+  const modal = $('image-viewer-modal');
+  const img = $('image-viewer-img');
+  img.src = imageUrl;
+  modal.hidden = false;
+}
+
+function hideImageViewer() {
+  const modal = $('image-viewer-modal');
+  const img = $('image-viewer-img');
+  modal.hidden = true;
+  img.src = '';
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentGroupId = null;
@@ -166,6 +209,9 @@ let allMessages = [];
 let oldestMessageId = null;
 let loadingOlder = false;
 let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
+let originalPageTitle = 'GayChat 🏳️‍🌈';
+let unreadNotificationCount = 0;
+let titleBlinkInterval = null;
 
 // Decryption failure text constants (must match renderMsgContent output)
 const MSG_NO_KEY = '[No key — set group key to decrypt]';
@@ -193,14 +239,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Set user display
   $('user-username').textContent = currentUser.username;
   const ua = $('user-avatar');
-  ua.textContent = currentUser.username[0].toUpperCase();
-  ua.style.background = currentUser.iconColor;
+  if (currentUser.profilePicture) {
+    ua.style.background = 'none';
+    const img = document.createElement('img');
+    img.src = currentUser.profilePicture;
+    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+    ua.appendChild(img);
+  } else {
+    ua.textContent = currentUser.username[0].toUpperCase();
+    ua.style.background = currentUser.iconColor;
+  }
 
   await loadGroups();
   initSocket();
   setupEventListeners();
   setupEmojiPicker();
   setupKeyboardShortcuts();
+
+  // Clear page title notification when page is focused
+  window.addEventListener('focus', clearPageTitleNotification);
+  window.addEventListener('blur', () => {
+    // Start tracking unread when page loses focus
+  });
 });
 
 // ── Load groups ───────────────────────────────────────────────────────────────
@@ -322,6 +382,9 @@ async function selectGroup(groupId) {
   const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
   $('owner-actions').hidden = !isOwner;
   $('member-actions').hidden = isOwner;
+  // Show clear history button if owner OR if member with permission
+  const canClearHistory = isOwner || (currentGroupData && currentGroupData.allowMemberClear);
+  $('common-actions').hidden = !canClearHistory;
   if (isOwner && currentGroupData) {
     $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
   }
@@ -407,8 +470,16 @@ function renderMembersList() {
 
     const av = document.createElement('div');
     av.className = 'member-avatar';
-    av.style.background = m.iconColor;
-    av.textContent = m.username[0].toUpperCase();
+    if (m.profilePicture) {
+      av.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = m.profilePicture;
+      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      av.appendChild(img);
+    } else {
+      av.style.background = m.iconColor;
+      av.textContent = m.username[0].toUpperCase();
+    }
 
     if (onlineUsers.has(m.id)) {
       const dot = document.createElement('span');
@@ -495,8 +566,18 @@ async function buildMessageRow(msg) {
   // Avatar
   const av = document.createElement('div');
   av.className = 'msg-avatar';
-  av.style.background = msg.senderColor || '#4A90D9';
-  av.textContent = (msg.senderName || '?')[0].toUpperCase();
+  // Look up profile picture from members list
+  const member = members.find(m => m.id === msg.senderId);
+  if (member && member.profilePicture) {
+    av.style.background = 'none';
+    const img = document.createElement('img');
+    img.src = member.profilePicture;
+    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+    av.appendChild(img);
+  } else {
+    av.style.background = msg.senderColor || '#4A90D9';
+    av.textContent = (msg.senderName || '?')[0].toUpperCase();
+  }
 
   const content = document.createElement('div');
   content.className = 'msg-content';
@@ -604,6 +685,11 @@ async function renderMsgContent(msg, textEl, bubble) {
         img.className = 'msg-image';
         img.src = url;
         img.alt = 'image';
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showImageViewer(url);
+        });
         bubble.appendChild(img);
       } else {
         const locked = document.createElement('div');
@@ -819,7 +905,7 @@ async function handleFileUpload(file) {
   const key = getGroupKey(currentGroupId);
   if (!key) { showToast('Set group key first', 'error'); return; }
 
-  const MAX_RAW = 1 * 1024 * 1024; // 1MB
+  const MAX_RAW = 25 * 1024 * 1024 * 1024; // 25GB
 
   let processedFile = file;
   const isImage = file.type.startsWith('image/');
@@ -827,12 +913,12 @@ async function handleFileUpload(file) {
   if (isImage) {
     processedFile = await compressImage(file);
     if (processedFile.size > MAX_RAW) {
-      showToast('Image too large (max 1MB after compression)', 'error');
+      showToast('Image too large (max 25GB after compression)', 'error');
       return;
     }
   } else {
     if (file.size > MAX_RAW) {
-      showToast('File too large (max 1MB)', 'error');
+      showToast('File too large (max 25GB)', 'error');
       return;
     }
   }
@@ -881,6 +967,12 @@ function initSocket() {
   });
 
   socket.on('new_message', async (msg) => {
+    // Increment page title notification if document is not focused
+    if (!document.hasFocus() && msg.senderId !== currentUser.id) {
+      unreadNotificationCount++;
+      updatePageTitleNotification();
+    }
+
     if (msg.groupId !== currentGroupId) {
       // Increment unread for non-active group
       unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
@@ -1079,6 +1171,8 @@ function setupKeyboardShortcuts() {
       $('ctx-menu').hidden = true;
       $('emoji-picker').hidden = true;
       $('whisper-picker').hidden = true;
+      // Close image viewer
+      hideImageViewer();
       // Cancel reply
       replyingTo = null;
       $('reply-preview-bar').hidden = true;
@@ -1272,8 +1366,87 @@ function setupEventListeners() {
     const d = await res.json();
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
-    $('user-avatar').style.background = d.iconColor;
+    const ua = $('user-avatar');
+    if (d.profilePicture) {
+      ua.innerHTML = ''; ua.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = d.profilePicture; img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      ua.appendChild(img);
+    } else {
+      ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
+    }
     $('profile-error').textContent = '✓ Saved';
+  });
+
+  // Profile picture type toggle
+  document.querySelectorAll('input[name="profile-picture-type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const type = document.querySelector('input[name="profile-picture-type"]:checked').value;
+      $('profile-picture-color-section').hidden = type !== 'color';
+      $('profile-picture-upload-section').hidden = type !== 'image';
+    });
+  });
+
+  // Profile picture upload preview
+  $('profile-picture-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      $('profile-error').textContent = 'Image too large (max 2MB)';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      $('profile-picture-preview-img').src = e.target.result;
+      $('profile-picture-preview').hidden = false;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Save profile picture
+  $('profile-save-picture').addEventListener('click', async () => {
+    const file = $('profile-picture-input').files[0];
+    if (!file) { $('profile-error').textContent = 'Please select an image'; return; }
+    if (file.size > 2 * 1024 * 1024) {
+      $('profile-error').textContent = 'Image too large (max 2MB)';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const profilePicture = e.target.result;
+      const res = await fetch('/api/auth/profile', {
+        method: 'PATCH', headers: apiHeaders(),
+        body: JSON.stringify({ profilePicture }),
+      });
+      const d = await res.json();
+      if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
+      currentUser = d;
+      const ua = $('user-avatar');
+      ua.innerHTML = ''; ua.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = d.profilePicture;
+      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      ua.appendChild(img);
+      $('profile-error').textContent = '✓ Saved';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Remove profile picture
+  $('profile-remove-picture').addEventListener('click', async () => {
+    const res = await fetch('/api/auth/profile', {
+      method: 'PATCH', headers: apiHeaders(),
+      body: JSON.stringify({ profilePicture: null }),
+    });
+    const d = await res.json();
+    if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
+    currentUser = d;
+    const ua = $('user-avatar');
+    ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
+    $('profile-picture-preview').hidden = true;
+    $('profile-picture-input').value = '';
+    $('profile-error').textContent = '✓ Removed';
   });
 
   $('profile-delete-btn').addEventListener('click', () => {
@@ -1593,6 +1766,16 @@ function setupEventListeners() {
     $('right-panel').classList.toggle('open');
   });
 
+  // Mobile empty state toggles
+  $('sidebar-toggle-empty').addEventListener('click', () => {
+    $('sidebar').classList.toggle('open');
+    $('sidebar-overlay').hidden = !$('sidebar').classList.contains('open');
+  });
+
+  $('right-panel-toggle-empty').addEventListener('click', () => {
+    $('right-panel').classList.toggle('open');
+  });
+
   // Mobile sidebar
   $('sidebar-toggle').addEventListener('click', () => {
     $('sidebar').classList.toggle('open');
@@ -1612,6 +1795,11 @@ function setupEventListeners() {
     const first = messagesArea().querySelector('.msg-row.unread');
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
+
+  // Image viewer
+  $('image-viewer-close').addEventListener('click', hideImageViewer);
+  $('image-viewer-overlay').addEventListener('click', hideImageViewer);
+  $('image-viewer-img').addEventListener('click', hideImageViewer);
 }
 
 async function loadOlderMessages() {

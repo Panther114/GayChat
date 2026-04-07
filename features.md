@@ -6,7 +6,8 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] User registration with username and password
 - [x] User login with bcrypt password hashing (cost factor 12)
 - [x] Session management with express-session and SQLite store
-- [x] User profile customization (username and icon color)
+- [x] User profile customization (username, icon color, and profile picture)
+- [x] Custom profile pictures (upload up to 2MB or use color + initial)
 - [x] Account deletion
 - [x] Secure session cookies (httpOnly, sameSite, secure in production)
 - [x] CSRF protection with double-submit token pattern
@@ -39,13 +40,15 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Reply/Quote functionality
 - [x] Whisper mode (private messages to selected members)
 - [x] Image sharing with auto-compression (max 1200px, 75% JPEG quality)
-- [x] File sharing (1MB limit)
+- [x] File sharing (25GB limit)
+- [x] Image viewer modal (click to magnify images)
+- [x] Automatic file download for non-image files
 - [x] Image MIME type detection (JPEG, PNG, GIF, WebP)
 - [x] Message deletion (sender or group owner)
 - [x] Clear all messages (owner, or members if allowed)
 - [x] Paginated message loading (50 messages per page, max 100)
 - [x] Load older messages on scroll
-- [x] Message size limit enforcement (1MB encrypted content)
+- [x] Message size limit enforcement (25GB encrypted content)
 
 ## User Interface & Experience
 - [x] Modern dark glassmorphism UI
@@ -59,11 +62,15 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Unread message counter
 - [x] "Scroll to bottom" button with unread badge
 - [x] "Jump to first unread" button
-- [x] Collapsible sidebar for mobile
+- [x] Collapsible sidebar for mobile with toggle button
+- [x] Collapsible right panel for mobile with toggle button
+- [x] Mobile toggle buttons visible on empty state for easy access
 - [x] Mobile-responsive layout
+- [x] Page title notifications for new messages when tab not focused
 - [x] Connection status indicator
 - [x] Reconnection banner
 - [x] Auto-resizing message input textarea
+- [x] Reply preview bar above message input showing "replying to" indicator
 
 ## Security & Anti-Spam
 - [x] Content Security Policy headers

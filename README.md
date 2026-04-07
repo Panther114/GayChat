@@ -8,17 +8,20 @@ A modern, **end-to-end encrypted** group chat application built with Node.js, Ex
 
 - 🔐 **AES-256-GCM client-side encryption** — plaintext never leaves your browser unencrypted
 - 🔑 **Per-group saved keys** — set a key once per group; messages auto-encrypt/decrypt
-- 👤 **Account registration** with custom username and icon color
+- 👤 **Account registration** with custom username, icon color, and profile picture
+- 🖼️ **Custom profile pictures** — upload profile pictures (up to 2MB) or use color + initial
 - 💬 **Group chats** — create or join groups via shareable codes
-- 📎 **Image & file sharing** — 1MB limit enforced (Railway bandwidth-friendly), auto-compressed
+- 📎 **Image & file sharing** — 25GB limit, auto-compressed images, automatic file download
+- 🔍 **Image viewer** — click images to magnify in full-screen modal
 - ↩ **Quote/Reply** — reply to any message with a preview quote
 - 🤫 **Whisper mode** — send private messages to selected members only
-- 👑 **Group owner controls** — kick members, disband group, clear history, rename group
+- 👑 **Group owner controls** — kick members, disband group, clear history, rename group, allow member clear
 - 🔍 **Search messages** — client-side search with highlight
 - 📥 **Export chat** — download full chat history as TXT
 - 😊 **Emoji picker** — grid of 80 emojis
 - 🌑 **Modern dark UI** — glassmorphism, gradient bubbles, smooth animations
-- 📱 **Mobile responsive** — collapsible sidebar, optimized for small screens
+- 📱 **Mobile responsive** — collapsible sidebars, optimized for small screens
+- 🔔 **Page title notifications** — get alerted to new messages when tab is not focused
 - ⚡ **Real-time** via Socket.IO — typing indicators, presence, delivery receipts
 - 🛡 **Anti-spam** — client + server rate limiting
 
