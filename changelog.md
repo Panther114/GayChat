@@ -7,8 +7,8 @@ This document tracks all changes to the GayChat project in a PR-based format.
 ## PR #11 — Implement explicitly listed feature tasks and bug fixes
 
 **What changed**
-- **Task 1 (Reply functionality)**: Already fully implemented - verified all functionality works (context menu, reply preview, message rendering, scroll to original)
-- **Task 2 (Mobile-friendly)**: Already fully implemented - verified collapsible sidebars work on mobile
+- **Task 1 (Reply functionality)**: Already fully implemented - verified all functionality works (context menu, reply preview bar above input, message rendering with reply quotes, scroll to original)
+- **Task 2 (Mobile toggle buttons)**: Fixed mobile UX - added visible toggle buttons (☰ and 📋) to empty state so mobile users can access sidebar and right panel when no group is selected
 - **Task 3 (Page title notifications)**: Added blinking page title with unread count when tab is not focused, clears when tab gains focus
 - **Task 4 (Image viewer)**: Added full-screen image viewer modal - click any image to magnify, click again or press Escape to close
 - **Task 5 (File size limit & download)**: Increased file size limit from 1MB to 25GB for all file types; non-image files already auto-download when clicked
@@ -26,8 +26,9 @@ This document tracks all changes to the GayChat project in a PR-based format.
 **Notes / Risks**
 - Profile pictures stored as base64 data URLs in database (up to ~2.8MB per user with 2MB limit)
 - File size limit increased to 25GB may impact bandwidth on some hosting platforms
+- Mobile toggle buttons on empty state positioned absolutely in top corners
 - All changes are fully backward compatible
-- Tasks 1 and 2 required no code changes as they were already fully implemented
+- Task 1 required no code changes as it was already fully implemented
 
 ## PR #0 — Project Bootstrap
 

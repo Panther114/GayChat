@@ -62,13 +62,15 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Unread message counter
 - [x] "Scroll to bottom" button with unread badge
 - [x] "Jump to first unread" button
-- [x] Collapsible sidebar for mobile
-- [x] Collapsible right panel for mobile
+- [x] Collapsible sidebar for mobile with toggle button
+- [x] Collapsible right panel for mobile with toggle button
+- [x] Mobile toggle buttons visible on empty state for easy access
 - [x] Mobile-responsive layout
 - [x] Page title notifications for new messages when tab not focused
 - [x] Connection status indicator
 - [x] Reconnection banner
 - [x] Auto-resizing message input textarea
+- [x] Reply preview bar above message input showing "replying to" indicator
 
 ## Security & Anti-Spam
 - [x] Content Security Policy headers
