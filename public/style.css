@@ -517,6 +517,16 @@ body.chat-body {
 .msg-row:not(.own) .msg-meta { color: var(--text-muted); }
 .msg-delivery { font-size: 11px; }
 .msg-delivery.delivered { color: var(--accent2); }
+.msg-edited-badge { font-size: 10px; font-style: italic; opacity: .6; }
+
+/* Inline message edit form */
+.msg-edit-form { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.msg-edit-input { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; color: var(--text-primary); font-size: 14px; padding: 6px 10px; resize: vertical; min-width: 180px; font-family: inherit; }
+.msg-edit-input:focus { outline: none; border-color: var(--accent1); }
+.msg-edit-form button { padding: 4px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+.msg-edit-save { background: var(--accent1); color: #fff; }
+.msg-edit-save:disabled { opacity: .5; cursor: not-allowed; }
+.msg-edit-cancel { background: rgba(255,255,255,.1); color: var(--text-primary); }
 
 /* Unread indicator */
 .msg-row.unread .msg-bubble { border-left: 3px solid var(--red); }

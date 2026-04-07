@@ -1,18 +1,38 @@
 'use strict';
 
 // ── Crypto Helpers ───────────────────────────────────────────────────────────
+
+// Cache derived keys to avoid running 100 000 PBKDF2 iterations for every
+// individual message encrypt/decrypt operation (#21).
+const derivedKeyCache = new Map(); // `${passphrase}\x00${groupId}` -> CryptoKey
+
 async function deriveKey(passphrase, groupId) {
+  const cacheKey = passphrase + '\x00' + groupId;
+  if (derivedKeyCache.has(cacheKey)) return derivedKeyCache.get(cacheKey);
   const enc = new TextEncoder();
   const keyMat = await crypto.subtle.importKey(
     'raw', enc.encode(passphrase), { name: 'PBKDF2' }, false, ['deriveKey']
   );
-  return crypto.subtle.deriveKey(
+  const key = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt: enc.encode(groupId), iterations: 100000, hash: 'SHA-256' },
     keyMat,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   );
+  derivedKeyCache.set(cacheKey, key);
+  return key;
+}
+
+// Convert a Uint8Array to a base64 string without using spread (which blows
+// the call stack for large buffers, #1).
+function uint8ToBase64(bytes) {
+  let binary = '';
+  const CHUNK = 32768;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }
 
 async function encryptMessage(text, passphrase, groupId) {
@@ -21,8 +41,8 @@ async function encryptMessage(text, passphrase, groupId) {
   const enc = new TextEncoder();
   const buf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
   return {
-    encryptedContent: btoa(String.fromCharCode(...new Uint8Array(buf))),
-    iv: btoa(String.fromCharCode(...iv)),
+    encryptedContent: uint8ToBase64(new Uint8Array(buf)),
+    iv: uint8ToBase64(iv),
   };
 }
 
@@ -43,8 +63,8 @@ async function encryptBytes(buffer, passphrase, groupId) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buffer);
   return {
-    encryptedContent: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
-    iv: btoa(String.fromCharCode(...iv)),
+    encryptedContent: uint8ToBase64(new Uint8Array(encrypted)),
+    iv: uint8ToBase64(iv),
   };
 }
 
@@ -114,7 +134,12 @@ function apiHeaders() {
 // ── Per-group key storage ────────────────────────────────────────────────────
 function getGroupKey(groupId) { return localStorage.getItem('gk:' + groupId) || null; }
 function setGroupKey(groupId, key) { localStorage.setItem('gk:' + groupId, key); }
-function clearGroupKey(groupId) { localStorage.removeItem('gk:' + groupId); }
+function clearGroupKey(groupId) {
+  // Evict the cached CryptoKey so re-entry uses a fresh derivation
+  const old = localStorage.getItem('gk:' + groupId);
+  if (old) derivedKeyCache.delete(old + '\x00' + groupId);
+  localStorage.removeItem('gk:' + groupId);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -415,6 +440,9 @@ function updateKeyState() {
 
 // ── Load messages ─────────────────────────────────────────────────────────────
 async function loadMessages(groupId, before) {
+  // Guard: prevent the scroll handler from triggering loadOlderMessages while
+  // the initial (non-paginated) load is still in flight (#2).
+  if (!before) loadingOlder = true;
   try {
     const url = `/api/groups/${groupId}/messages` + (before ? `?before=${before}&limit=50` : '?limit=50');
     const res = await fetch(url);
@@ -426,7 +454,13 @@ async function loadMessages(groupId, before) {
     if (!before) {
       $('messages-area').innerHTML = '<div class="load-more-indicator" id="load-more-indicator" hidden>Loading older messages…</div>';
       allMessages = msgs;
-      for (const m of msgs) await appendMessageBubble(m, false);
+
+      // Build all rows concurrently then insert via a single DocumentFragment
+      // to avoid per-row reflows during the initial load (#26).
+      const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
+      const fragment = document.createDocumentFragment();
+      for (const row of rows) { if (row) fragment.appendChild(row); }
+      messagesArea().appendChild(fragment);
       scrollToBottom(true);
     } else {
       // Prepend older messages
@@ -446,6 +480,7 @@ async function loadMessages(groupId, before) {
       oldestMessageId = msgs[0].id;
     }
   } catch(err) { console.error('loadMessages error:', err); }
+  finally { if (!before) loadingOlder = false; }
 }
 
 // ── Load members ──────────────────────────────────────────────────────────────
@@ -622,10 +657,16 @@ async function buildMessageRow(msg) {
 
   bubble.appendChild(textEl);
 
-  // Timestamp + delivery
+  // Timestamp + delivery + edited badge
   const meta = document.createElement('span');
   meta.className = 'msg-meta';
   meta.textContent = formatTime(msg.createdAt);
+  if (msg.editedAt) {
+    const editedBadge = document.createElement('span');
+    editedBadge.className = 'msg-edited-badge';
+    editedBadge.textContent = ' (edited)';
+    meta.appendChild(editedBadge);
+  }
   if (isOwn) {
     const del = document.createElement('span');
     del.className = 'msg-delivery';
@@ -802,6 +843,10 @@ let ctxText = '';
 function showContextMenu(e, msg, text) {
   ctxMsg = msg; ctxText = text;
   const menu = $('ctx-menu');
+  // Show "Edit" only for own text/whisper messages
+  const canEdit = msg.senderId === currentUser.id &&
+    (msg.type === 'text' || msg.type === 'whisper');
+  $('ctx-edit').hidden = !canEdit;
   menu.hidden = false;
   if (e) {
     menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + 'px';
@@ -812,6 +857,75 @@ function showContextMenu(e, msg, text) {
 }
 
 function hideContextMenu() { $('ctx-menu').hidden = true; ctxMsg = null; }
+
+// ── Edit message ──────────────────────────────────────────────────────────────
+async function startEditMessage(msg, currentPlaintext) {
+  const row = document.querySelector('[data-msg-id="' + msg.id + '"]');
+  if (!row) return;
+  const bubble = row.querySelector('.msg-bubble');
+  const textEl = row.querySelector('.msg-text');
+  if (!bubble || !textEl) return;
+
+  // Replace text span with an inline edit form
+  const editForm = document.createElement('div');
+  editForm.className = 'msg-edit-form';
+  const editInput = document.createElement('textarea');
+  editInput.className = 'msg-edit-input';
+  editInput.value = currentPlaintext;
+  const CHARS_PER_ROW = 50; // approximate chars per row for initial textarea height
+  editInput.rows = Math.max(1, Math.ceil(currentPlaintext.length / CHARS_PER_ROW));
+  const editSave = document.createElement('button');
+  editSave.className = 'msg-edit-save';
+  editSave.textContent = 'Save';
+  const editCancel = document.createElement('button');
+  editCancel.className = 'msg-edit-cancel';
+  editCancel.textContent = 'Cancel';
+  editForm.append(editInput, editSave, editCancel);
+
+  // Hide the text span, inject form
+  textEl.hidden = true;
+  bubble.insertBefore(editForm, textEl);
+  editInput.focus();
+  editInput.setSelectionRange(editInput.value.length, editInput.value.length);
+
+  const cancelEdit = () => {
+    editForm.remove();
+    textEl.hidden = false;
+  };
+
+  editCancel.addEventListener('click', cancelEdit);
+  editInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cancelEdit();
+  });
+
+  editSave.addEventListener('click', async () => {
+    const newText = editInput.value.trim();
+    if (!newText || newText === currentPlaintext) { cancelEdit(); return; }
+    const key = getGroupKey(currentGroupId);
+    if (!key) { showToast('Set group key first', 'error'); cancelEdit(); return; }
+    editSave.disabled = true;
+    try {
+      const { encryptedContent, iv } = await encryptMessage(newText, key, currentGroupId);
+      const res = await fetch(`/api/groups/${currentGroupId}/messages/${msg.id}`, {
+        method: 'PATCH',
+        headers: apiHeaders(),
+        body: JSON.stringify({ encryptedContent, iv }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Edit failed', 'error');
+        editSave.disabled = false;
+      } else {
+        cancelEdit();
+        // The message_edited socket event will update the bubble for everyone
+      }
+    } catch(err) {
+      console.error('Edit error:', err);
+      showToast('Edit failed', 'error');
+      editSave.disabled = false;
+    }
+  });
+}
 
 // ── Send message ──────────────────────────────────────────────────────────────
 async function doSend(text) {
@@ -1011,6 +1125,43 @@ function initSocket() {
   socket.on('message_deleted', ({ messageId }) => {
     const row = document.querySelector('[data-msg-id="' + messageId + '"]');
     if (row) row.remove();
+  });
+
+  socket.on('message_edited', async ({ messageId, encryptedContent, iv, editedAt }) => {
+    const row = document.querySelector('[data-msg-id="' + messageId + '"]');
+    if (!row) return;
+    const bubble = row.querySelector('.msg-bubble');
+    const textEl = row.querySelector('.msg-text');
+    if (!bubble || !textEl) return;
+
+    // Update the stored ciphertext on the bubble dataset
+    bubble.dataset.encContent = encryptedContent;
+    bubble.dataset.iv = iv;
+
+    // Re-decrypt and update display text
+    const key = currentGroupId ? getGroupKey(currentGroupId) : null;
+    if (key) {
+      const pt = await decryptMessage(encryptedContent, iv, key, currentGroupId);
+      textEl.textContent = pt !== null ? pt : MSG_DECRYPT_FAIL;
+    } else {
+      textEl.textContent = MSG_NO_KEY;
+    }
+
+    // Add or update the "(edited)" badge in the meta line
+    const metaEl = bubble.querySelector('.msg-meta');
+    if (metaEl && !metaEl.querySelector('.msg-edited-badge')) {
+      const badge = document.createElement('span');
+      badge.className = 'msg-edited-badge';
+      badge.textContent = ' (edited)';
+      // Insert before delivery receipt if present
+      const delEl = metaEl.querySelector('.msg-delivery');
+      if (delEl) metaEl.insertBefore(badge, delEl);
+      else metaEl.appendChild(badge);
+    }
+
+    // Keep allMessages in sync
+    const stored = allMessages.find(m => m.id === messageId);
+    if (stored) { stored.encryptedContent = encryptedContent; stored.iv = iv; stored.editedAt = editedAt; }
   });
 
   socket.on('chat_cleared', ({ groupId }) => {
@@ -1668,6 +1819,16 @@ function setupEventListeners() {
   $('ctx-copy').addEventListener('click', () => {
     if (ctxText) navigator.clipboard.writeText(ctxText).catch(() => {});
     hideContextMenu();
+  });
+
+  $('ctx-edit').addEventListener('click', () => {
+    if (!ctxMsg) return;
+    const msg = ctxMsg;
+    const text = ctxText;
+    hideContextMenu();
+    const isDecryptFail = text === MSG_NO_KEY || text === MSG_DECRYPT_FAIL;
+    if (isDecryptFail) { showToast('Cannot edit — message not decrypted', 'error'); return; }
+    startEditMessage(msg, text);
   });
 
   document.addEventListener('click', (e) => {
