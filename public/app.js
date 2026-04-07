@@ -1640,24 +1640,26 @@ function setupEventListeners() {
   // Context menu actions
   $('ctx-reply').addEventListener('click', () => {
     if (!ctxMsg) return;
+    const msg = ctxMsg;
+    const text = ctxText;
     hideContextMenu();
-    const isDecryptFail = ctxText === MSG_NO_KEY || ctxText === MSG_DECRYPT_FAIL;
+    const isDecryptFail = text === MSG_NO_KEY || text === MSG_DECRYPT_FAIL;
     let preview;
-    if (ctxText && !isDecryptFail) {
-      preview = ctxText;
-    } else if (ctxMsg.type === 'image') {
+    if (text && !isDecryptFail) {
+      preview = text;
+    } else if (msg.type === 'image') {
       preview = '[image]';
-    } else if (ctxMsg.type === 'file') {
-      preview = '[file: ' + (ctxMsg.filename || '') + ']';
+    } else if (msg.type === 'file') {
+      preview = '[file: ' + (msg.filename || '') + ']';
     } else {
       preview = '[encrypted]';
     }
     replyingTo = {
-      id: ctxMsg.id,
-      senderName: ctxMsg.senderName,
+      id: msg.id,
+      senderName: msg.senderName,
       preview,
     };
-    $('reply-preview-name').textContent = ctxMsg.senderName;
+    $('reply-preview-name').textContent = msg.senderName;
     $('reply-preview-text').textContent = truncate(replyingTo.preview, 80);
     $('reply-preview-bar').hidden = false;
     $('message-input').focus();

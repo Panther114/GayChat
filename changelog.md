@@ -4,6 +4,24 @@ This document tracks all changes to the GayChat project in a PR-based format.
 
 ---
 
+## PR #12 — Fix reply indicator and improve mobile toggle button visibility
+
+**What changed**
+- **Task 1 (Reply indicator bug fix)**: Fixed bug in `ctx-reply` click handler where `hideContextMenu()` was called before saving a local copy of `ctxMsg`, causing a silent TypeError (cannot read property of null) that prevented the reply preview bar from ever appearing. The fix saves `ctxMsg` and `ctxText` to local variables before calling `hideContextMenu()`. The "replying to" bar above the message input now correctly appears, and the sent message correctly displays the reply quote.
+- **Task 2 (Mobile toggle button visibility)**: Added visible background, border, larger font size, and adequate padding to the empty-state mobile toggle buttons (☰ and 📋) so they are clearly visible on dark mobile screens when no group is selected.
+
+**What was NOT changed**
+- Core messaging logic and encryption system unchanged
+- Auth unchanged
+- Message data format unchanged
+- Desktop layout unchanged
+
+**Notes / Risks**
+- The reply bug was a regression introduced in a previous PR where the handler used global `ctxMsg` after `hideContextMenu()` nullified it
+- Mobile toggle button styling change is purely cosmetic and does not affect functionality
+
+---
+
 ## PR #11 — Implement explicitly listed feature tasks and bug fixes
 
 **What changed**
