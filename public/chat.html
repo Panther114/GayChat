@@ -206,10 +206,32 @@
         <button class="btn-primary btn-sm" id="profile-save-username">Save</button>
       </div>
       <div class="form-group">
-        <label>Change Icon Color</label>
-        <div class="color-pick-row">
-          <input type="color" id="profile-color" value="#4A90D9" />
-          <button class="btn-primary btn-sm" id="profile-save-color">Save</button>
+        <label>Profile Picture</label>
+        <div class="profile-picture-selector">
+          <label class="profile-picture-option">
+            <input type="radio" name="profile-picture-type" value="color" checked />
+            <span>Color + Initial</span>
+          </label>
+          <label class="profile-picture-option">
+            <input type="radio" name="profile-picture-type" value="image" />
+            <span>Upload Image</span>
+          </label>
+        </div>
+        <div id="profile-picture-color-section">
+          <label>Icon Color</label>
+          <div class="color-pick-row">
+            <input type="color" id="profile-color" value="#4A90D9" />
+            <button class="btn-primary btn-sm" id="profile-save-color">Save</button>
+          </div>
+        </div>
+        <div id="profile-picture-upload-section" hidden>
+          <label>Upload Profile Picture (max 2MB)</label>
+          <input type="file" id="profile-picture-input" accept="image/*" />
+          <div id="profile-picture-preview" hidden>
+            <img id="profile-picture-preview-img" src="" alt="Preview" style="max-width: 100px; max-height: 100px; border-radius: 50%;" />
+          </div>
+          <button class="btn-primary btn-sm" id="profile-save-picture">Save Picture</button>
+          <button class="btn-secondary btn-sm" id="profile-remove-picture">Remove Picture</button>
         </div>
       </div>
       <p class="form-error" id="profile-error"></p>

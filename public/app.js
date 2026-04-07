@@ -462,8 +462,16 @@ function renderMembersList() {
 
     const av = document.createElement('div');
     av.className = 'member-avatar';
-    av.style.background = m.iconColor;
-    av.textContent = m.username[0].toUpperCase();
+    if (m.profilePicture) {
+      av.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = m.profilePicture;
+      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      av.appendChild(img);
+    } else {
+      av.style.background = m.iconColor;
+      av.textContent = m.username[0].toUpperCase();
+    }
 
     if (onlineUsers.has(m.id)) {
       const dot = document.createElement('span');
@@ -879,7 +887,7 @@ async function handleFileUpload(file) {
   const key = getGroupKey(currentGroupId);
   if (!key) { showToast('Set group key first', 'error'); return; }
 
-  const MAX_RAW = 1 * 1024 * 1024; // 1MB
+  const MAX_RAW = 25 * 1024 * 1024 * 1024; // 25GB
 
   let processedFile = file;
   const isImage = file.type.startsWith('image/');
@@ -887,12 +895,12 @@ async function handleFileUpload(file) {
   if (isImage) {
     processedFile = await compressImage(file);
     if (processedFile.size > MAX_RAW) {
-      showToast('Image too large (max 1MB after compression)', 'error');
+      showToast('Image too large (max 25GB after compression)', 'error');
       return;
     }
   } else {
     if (file.size > MAX_RAW) {
-      showToast('File too large (max 1MB)', 'error');
+      showToast('File too large (max 25GB)', 'error');
       return;
     }
   }
@@ -1340,8 +1348,87 @@ function setupEventListeners() {
     const d = await res.json();
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
-    $('user-avatar').style.background = d.iconColor;
+    const ua = $('user-avatar');
+    if (d.profilePicture) {
+      ua.innerHTML = ''; ua.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = d.profilePicture; img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      ua.appendChild(img);
+    } else {
+      ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
+    }
     $('profile-error').textContent = '✓ Saved';
+  });
+
+  // Profile picture type toggle
+  document.querySelectorAll('input[name="profile-picture-type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const type = document.querySelector('input[name="profile-picture-type"]:checked').value;
+      $('profile-picture-color-section').hidden = type !== 'color';
+      $('profile-picture-upload-section').hidden = type !== 'image';
+    });
+  });
+
+  // Profile picture upload preview
+  $('profile-picture-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      $('profile-error').textContent = 'Image too large (max 2MB)';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      $('profile-picture-preview-img').src = e.target.result;
+      $('profile-picture-preview').hidden = false;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Save profile picture
+  $('profile-save-picture').addEventListener('click', async () => {
+    const file = $('profile-picture-input').files[0];
+    if (!file) { $('profile-error').textContent = 'Please select an image'; return; }
+    if (file.size > 2 * 1024 * 1024) {
+      $('profile-error').textContent = 'Image too large (max 2MB)';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const profilePicture = e.target.result;
+      const res = await fetch('/api/auth/profile', {
+        method: 'PATCH', headers: apiHeaders(),
+        body: JSON.stringify({ profilePicture }),
+      });
+      const d = await res.json();
+      if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
+      currentUser = d;
+      const ua = $('user-avatar');
+      ua.innerHTML = ''; ua.style.background = 'none';
+      const img = document.createElement('img');
+      img.src = d.profilePicture;
+      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
+      ua.appendChild(img);
+      $('profile-error').textContent = '✓ Saved';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Remove profile picture
+  $('profile-remove-picture').addEventListener('click', async () => {
+    const res = await fetch('/api/auth/profile', {
+      method: 'PATCH', headers: apiHeaders(),
+      body: JSON.stringify({ profilePicture: null }),
+    });
+    const d = await res.json();
+    if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
+    currentUser = d;
+    const ua = $('user-avatar');
+    ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
+    $('profile-picture-preview').hidden = true;
+    $('profile-picture-input').value = '';
+    $('profile-error').textContent = '✓ Removed';
   });
 
   $('profile-delete-btn').addEventListener('click', () => {

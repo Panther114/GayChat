@@ -95,6 +95,13 @@ body.auth-body {
 .form-group-color .color-pick-row input[type="color"] { width: 40px; height: 40px; border-radius: 8px; padding: 2px; cursor: pointer; }
 .color-preview { font-size: 22px; }
 
+.profile-picture-selector { display: flex; gap: 16px; margin-bottom: 12px; }
+.profile-picture-option { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+.profile-picture-option input[type="radio"] { cursor: pointer; }
+#profile-picture-upload-section { margin-top: 12px; }
+#profile-picture-preview { margin-top: 8px; margin-bottom: 8px; }
+#profile-picture-input { margin-bottom: 8px; }
+
 .form-error { color: var(--red); font-size: 12px; min-height: 18px; }
 
 .btn-primary {
