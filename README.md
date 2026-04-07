@@ -14,6 +14,7 @@ A modern, **end-to-end encrypted** group chat application built with Node.js, Ex
 - 📎 **Image & file sharing** — 25GB limit, auto-compressed images, automatic file download
 - 🔍 **Image viewer** — click images to magnify in full-screen modal
 - ↩ **Quote/Reply** — reply to any message with a preview quote
+- ✏️ **Message editing** — edit your own text/whisper messages; edited messages show an "(edited)" badge
 - 🤫 **Whisper mode** — send private messages to selected members only
 - 👑 **Group owner controls** — kick members, disband group, clear history, rename group, allow member clear
 - 🔍 **Search messages** — client-side search with highlight
@@ -23,7 +24,7 @@ A modern, **end-to-end encrypted** group chat application built with Node.js, Ex
 - 📱 **Mobile responsive** — collapsible sidebars, optimized for small screens
 - 🔔 **Page title notifications** — get alerted to new messages when tab is not focused
 - ⚡ **Real-time** via Socket.IO — typing indicators, presence, delivery receipts
-- 🛡 **Anti-spam** — client + server rate limiting
+- 🛡 **Anti-spam** — client + server rate limiting, brute-force login protection
 
 ---
 

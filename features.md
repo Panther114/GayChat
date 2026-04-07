@@ -16,6 +16,7 @@ This document tracks all implemented features in the GayChat application. All fe
 ## End-to-End Encryption
 - [x] AES-256-GCM client-side encryption for all messages
 - [x] PBKDF2 key derivation (100,000 iterations, SHA-256)
+- [x] Derived key caching — one derivation per (passphrase, group) session; subsequent operations reuse the cached CryptoKey
 - [x] Per-group encryption keys stored in localStorage
 - [x] Encryption key setup interface
 - [x] Automatic encryption/decryption of messages
@@ -45,9 +46,10 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Automatic file download for non-image files
 - [x] Image MIME type detection (JPEG, PNG, GIF, WebP)
 - [x] Message deletion (sender or group owner)
+- [x] Message editing (sender only, text and whisper messages; shows "(edited)" badge)
 - [x] Clear all messages (owner, or members if allowed)
 - [x] Paginated message loading (50 messages per page, max 100)
-- [x] Load older messages on scroll
+- [x] Load older messages on scroll (tie-breaking pagination — no skipped/duplicate messages)
 - [x] Message size limit enforcement (25GB encrypted content)
 
 ## User Interface & Experience
@@ -74,7 +76,9 @@ This document tracks all implemented features in the GayChat application. All fe
 
 ## Security & Anti-Spam
 - [x] Content Security Policy headers
+- [x] HTTP Strict-Transport-Security (HSTS) header in production
 - [x] Server-side rate limiting (10 messages per 5 seconds)
+- [x] Rate limiting applies to both regular messages and whispers
 - [x] Client-side rate limiting
 - [x] Repeated message detection (prevents 3+ identical messages)
 - [x] Password strength requirements (min 6 characters)
@@ -83,6 +87,10 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Filename sanitization for uploads
 - [x] CSRF token validation for state-changing operations
 - [x] Session authentication for Socket.IO connections
+- [x] Brute-force login protection (10 failed attempts per IP per 15 minutes)
+- [x] Timing-safe comparison for ADMIN_SECRET bearer token
+- [x] Profile picture MIME type allowlist (JPEG, PNG, GIF, WebP only — SVG rejected)
+- [x] Whisper recipient membership validation (recipients must be group members)
 
 ## Group Owner Controls
 - [x] Kick members from group
@@ -97,8 +105,9 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Safe database migrations
 - [x] Persistent session storage (sessions.db)
 - [x] Support for Railway Volumes via DB_PATH env var
-- [x] Auto-generated session secret with database persistence
+- [x] Auto-generated session secret with database persistence (falls back to ephemeral random secret — never a hard-coded value)
 - [x] Database schema includes: users, group_chats, group_members, messages, _config
+- [x] Account deletion wrapped in a single atomic transaction
 
 ## Real-time Features (Socket.IO)
 - [x] Real-time message delivery
@@ -132,3 +141,5 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Whisper recipient picker UI
 - [x] Group code display and copy functionality
 - [x] User logout functionality
+- [x] SVG favicon for both auth and chat pages
+- [x] Optimised initial message load using DocumentFragment (single DOM mutation)
