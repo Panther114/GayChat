@@ -23,6 +23,8 @@ A modern, **end-to-end encrypted** group chat application built with Node.js, Ex
 - 🌑 **Modern dark UI** — glassmorphism, gradient bubbles, smooth animations
 - 📱 **Mobile responsive** — collapsible sidebars, optimized for small screens
 - 🔔 **Page title notifications** — get alerted to new messages when tab is not focused
+- 🔔 **Native OS notifications** — Windows/macOS/Linux system notifications with click-to-focus (desktop app)
+- 🖥️ **Windows desktop app** — Electron wrapper with system tray, taskbar badge, auto-launch, and auto-update
 - ⚡ **Real-time** via Socket.IO — typing indicators, presence, delivery receipts
 - 🛡 **Anti-spam** — client + server rate limiting, brute-force login protection
 
@@ -66,6 +68,7 @@ Railway will now store the database file on the mounted volume and it will survi
 | Auth | bcrypt, express-session + connect-sqlite3 |
 | Encryption | AES-256-GCM via Web Crypto API (client-side only) |
 | Frontend | Vanilla HTML, CSS, JavaScript |
+| Desktop | Electron (Windows / macOS / Linux) |
 | Deployment | Railway.app |
 
 ---
@@ -125,6 +128,44 @@ See the **⚠️ Persistent Storage on Railway** section above — it is critica
 
 ---
 
+## Windows Desktop App (Electron)
+
+GayChat can be run as a native Windows desktop app (also supports macOS and Linux) using Electron. The desktop app adds:
+
+- 🖥️ **System tray** — minimises to tray; click to show/hide
+- 🔔 **Native notifications** — Windows Action Center alerts with click-to-focus on the right group
+- 🔢 **Taskbar badge** — red unread-count overlay on the taskbar icon
+- ⚡ **Taskbar flash** — taskbar button flashes on new messages when window is in background
+- 🚀 **Auto-launch** — optionally start with Windows
+- 🔄 **Auto-update** — receives updates via GitHub Releases
+
+### Quick start (development)
+
+```bash
+# Install all dependencies (including devDependencies for Electron)
+npm install
+
+# Start the server
+node server.js &
+
+# Launch the desktop app
+npm run electron
+```
+
+### Build a Windows installer
+
+```bash
+npm run build:win
+# Output: dist/GayChat Setup <version>.exe  (installer)
+#         dist/GayChat <version>.exe         (portable)
+```
+
+See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full installation guide, including icon setup, server URL configuration, notification permissions, and troubleshooting.
+
+> **Railway note**: The `railway.json` build command is set to `npm install --omit=dev`, so `electron` and `electron-builder` are never installed on the Railway server — they are `devDependencies` only and do not affect the web deployment.
+
+---
+
 ## Local Development
 
 ```bash
@@ -146,8 +187,13 @@ Open `http://localhost:3000` in your browser.
 ├── server.js          # Express + Socket.IO backend
 ├── package.json       # Dependencies and npm start script
 ├── railway.json       # Railway deployment config
+├── INSTALL_DESKTOP.md # Desktop app installation guide
 ├── .gitignore
 ├── README.md
+├── electron/
+│   ├── main.js        # Electron main process (window, tray, IPC, updater)
+│   └── preload.js     # Secure renderer ↔ main bridge (contextBridge)
+├── build/             # Icon assets for electron-builder (not committed; add icon.ico here)
 └── public/
     ├── index.html     # Sign In / Sign Up page
     ├── chat.html      # Main chat interface (WeChat-style)

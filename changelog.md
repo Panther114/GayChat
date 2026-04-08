@@ -4,6 +4,68 @@ This document tracks all changes to the GayChat project in a PR-based format.
 
 ---
 
+## PR #14 — Electron desktop app (Windows/macOS/Linux)
+
+**What changed**
+
+- **Electron main process (`electron/main.js`)**: Added a full Electron main process that creates a `BrowserWindow` loading the configured GayChat server URL. Includes:
+  - Single-instance lock (`app.requestSingleInstanceLock`) — launching a second instance focuses the existing window.
+  - System tray icon with right-click context menu (Open, Check for Updates, Quit) and click-to-toggle-window behaviour.
+  - Hide-to-tray on window close — the app keeps running in the background like WeChat.
+  - Native OS notification via `Notification` (main process) triggered by IPC from the renderer; clicking the notification brings the window to front and navigates to the relevant group.
+  - Taskbar overlay badge (red unread-count circle) updated via `mainWindow.setOverlayIcon`.
+  - Taskbar button flash (`mainWindow.flashFrame`) when a new message arrives while the window is unfocused.
+  - Auto-launch at system startup via `app.setLoginItemSettings`, configurable at runtime.
+  - Auto-updater via `electron-updater`: checks GitHub Releases on startup (packaged builds only), prompts for download/restart.
+  - Persistent config via `electron-store` (server URL, window bounds, startup preference).
+  - `app.setAppUserModelId('com.gaychat.app')` for correct Windows Action Center grouping.
+
+- **Preload script (`electron/preload.js`)**: Implements the secure renderer ↔ main bridge using `contextBridge.exposeInMainWorld`. Exposes `window.electronAPI` with: `setUnreadCount`, `showNotification`, `onFocusGroup`, `getLaunchAtStartup`, `setLaunchAtStartup`, `getServerUrl`, `setServerUrl`. Security settings: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
+
+- **Native notifications in `public/app.js`**:
+  - Added `requestNotificationPermission()` — called on DOMContentLoaded to request `Notification.permission`.
+  - Added `sendNativeNotification(title, body, groupId)` — routes to `window.electronAPI.showNotification` in the desktop app, or falls back to the Web Notification API in a plain browser.
+  - `new_message` handler now calls `sendNativeNotification` when a message arrives in a background group (always) or the active group while the window is not focused.
+  - `updatePageTitleNotification` now also calls `window.electronAPI?.setUnreadCount(n)` to keep the Electron taskbar badge in sync.
+  - On DOMContentLoaded, registers `window.electronAPI?.onFocusGroup` callback to switch to the correct group when a notification is clicked.
+
+- **`package.json`**:
+  - Added `devDependencies`: `electron ^41.0.0`, `electron-builder ^25.0.0`, `electron-updater ^6.3.0`, `electron-store ^10.0.0`, `cross-env ^7.0.3`.
+  - Added scripts: `electron`, `electron:dev`, `build:win`, `build:mac`, `build:linux`.
+  - Added `electron-builder` `build` config: appId `com.gaychat.app`, NSIS installer + portable `.exe`, Windows/macOS/Linux targets, GitHub publish config.
+
+- **`railway.json`**: Added `"buildCommand": "npm install --omit=dev"` to the `build` block. This prevents Railway from downloading the Electron binary (a large platform-specific download) on every server deploy. Electron and electron-builder are `devDependencies` and are not needed on the server.
+
+- **`.gitignore`**: Added `dist/` (electron-builder output), `build/icon.ico`, `build/icon.icns`, `build/icons/` (generated icon assets).
+
+- **`INSTALL_DESKTOP.md`**: New installation guide covering: pre-built installer download, build-from-source steps (icon setup, `npm run build:win`), server URL configuration, auto-launch setup, system tray usage, notification permissions, auto-updater, troubleshooting table, and file locations on Windows.
+
+- **`README.md`**: Added "Windows Desktop App (Electron)" section with quick-start, build commands, link to install guide, and Railway note. Updated Features list and Tech Stack table. Updated File Structure section.
+
+- **`features.md`**: Added new "Desktop App (Electron)" section with all 16 desktop features marked `[x]`. Updated the Deployment section entry for `railway.json`. Added native OS notification to the UI & Experience section.
+
+**What was NOT changed**
+- `server.js` — backend logic entirely unchanged
+- `public/index.html`, `public/chat.html`, `public/style.css`, `public/auth.js` — unchanged
+- All existing `package.json` production dependencies — unchanged
+- All existing app.js logic outside the notification and init additions — unchanged
+- Railway deployment model unchanged (still `node server.js` via Nixpacks)
+
+**Railway deployment safety**
+- Electron packages are in `devDependencies` only.
+- `railway.json` now runs `npm install --omit=dev` which skips all `devDependencies`, so the Electron binary is never downloaded on Railway.
+- The `node server.js` start command is unaffected.
+- Existing Railway deployments will continue to work without any additional configuration.
+
+**Notes / Risks**
+- The desktop app requires a reachable GayChat server. The server URL can be changed at runtime via `window.electronAPI.setServerUrl(url)` in DevTools.
+- `electron-store ^10.0.0` is ESM-only; `main.js` uses dynamic `import()` to load it.
+- The taskbar overlay icon uses an SVG-generated badge. On Windows, `setOverlayIcon` requires a taskbar button (i.e. the window must have been shown at least once).
+- Code-signing is not included; users may see a Windows SmartScreen warning for unsigned builds.
+- Auto-updater only operates in packaged builds (`app.isPackaged`). GitHub release `publish` config must be set before auto-update works end-to-end.
+
+---
+
 ## PR #13 — Bug fixes, security hardening, and message editing
 
 **What changed**

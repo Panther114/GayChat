@@ -3,3 +3,9 @@ node_modules/
 *.db-shm
 *.db-wal
 .env
+
+# Electron build output
+dist/
+build/icon.ico
+build/icon.icns
+build/icons/
