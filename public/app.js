@@ -173,6 +173,38 @@ function playNotifSound() {
   } catch { /* audio not available */ }
 }
 
+// ── Native OS Notifications (browser + Electron desktop) ─────────────────────
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function sendNativeNotification(title, body, groupId) {
+  // In Electron the main process handles it via IPC for full OS integration
+  // (Action Center, notification click → focus window + group).
+  if (window.electronAPI) {
+    window.electronAPI.showNotification({ title, body, groupId });
+    return;
+  }
+  // In a plain browser fall back to the Web Notification API.
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(title, { body, icon: '/favicon.svg', tag: groupId });
+      n.addEventListener('click', () => { window.focus(); });
+    } catch { /* notifications not supported */ }
+  }
+}
+
+// Build the notification body text for a message, using the decrypted preview
+// when available and falling back to type-based labels for media/encrypted content.
+function getNotificationBody(msg, preview) {
+  if (msg.type === 'image') return '[Image]';
+  if (msg.type === 'file') return '[File: ' + (msg.filename || '') + ']';
+  if (msg.type === 'whisper') return '[Whisper]';
+  return preview !== '[encrypted]' ? preview : 'New message';
+}
+
 // ── Page title notification ──────────────────────────────────────────────────
 function updatePageTitleNotification() {
   if (unreadNotificationCount > 0) {
@@ -194,6 +226,8 @@ function updatePageTitleNotification() {
     }
     document.title = originalPageTitle;
   }
+  // Keep Electron taskbar badge in sync with total unread count
+  window.electronAPI?.setUnreadCount(unreadNotificationCount);
 }
 
 function clearPageTitleNotification() {
@@ -280,6 +314,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupEmojiPicker();
   setupKeyboardShortcuts();
+
+  // Request permission to show native OS notifications
+  requestNotificationPermission();
+
+  // When running in the Electron desktop app, listen for notification-click
+  // events from the main process so we can switch to the right group.
+  if (window.electronAPI) {
+    window.electronAPI.onFocusGroup((groupId) => {
+      const target = groups.find(g => g.id === groupId);
+      if (target) selectGroup(target);
+    });
+  }
 
   // Clear page title notification when page is focused
   window.addEventListener('focus', clearPageTitleNotification);
@@ -1102,6 +1148,16 @@ function initSocket() {
       else if (msg.type === 'file') preview = '[File: ' + (msg.filename || '') + ']';
       else if (msg.type === 'whisper') preview = '[Whisper]';
       updateGroupPreview(msg.groupId, preview, msg.createdAt);
+      // Send native OS notification when a message arrives in a background group
+      if (msg.senderId !== currentUser.id) {
+        const groupData = groups.find(g => g.id === msg.groupId);
+        const groupName = groupData ? groupData.name : 'GayChat';
+        sendNativeNotification(
+          `${msg.senderName} in ${groupName}`,
+          getNotificationBody(msg, preview),
+          msg.groupId
+        );
+      }
       return;
     }
     await appendMessageBubble(msg, true);
@@ -1115,6 +1171,16 @@ function initSocket() {
     else if (msg.type === 'file') preview2 = '[File: ' + (msg.filename || '') + ']';
     else if (msg.type === 'whisper') preview2 = '[Whisper]';
     updateGroupPreview(msg.groupId, preview2, msg.createdAt);
+    // Send native OS notification when the window is not focused (active group)
+    if (!document.hasFocus() && msg.senderId !== currentUser.id) {
+      const groupData = groups.find(g => g.id === msg.groupId);
+      const groupName = groupData ? groupData.name : 'GayChat';
+      sendNativeNotification(
+        `${msg.senderName} in ${groupName}`,
+        getNotificationBody(msg, preview2),
+        msg.groupId
+      );
+    }
   });
 
   socket.on('message_delivered', ({ messageId }) => {

@@ -69,6 +69,7 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Mobile toggle buttons visible on empty state for easy access
 - [x] Mobile-responsive layout
 - [x] Page title notifications for new messages when tab not focused
+- [x] Native OS notifications (Web Notification API) with click-to-focus — browser and desktop app
 - [x] Connection status indicator
 - [x] Reconnection banner
 - [x] Auto-resizing message input textarea
@@ -127,9 +128,28 @@ This document tracks all implemented features in the GayChat application. All fe
 - [x] Environment variable configuration (SESSION_SECRET, PORT, DB_PATH, ADMIN_SECRET)
 - [x] Auto-detection of production environment
 - [x] Node.js version requirement (>=18.0.0)
-- [x] Railway.json deployment configuration
+- [x] Railway.json deployment configuration (with `npm install --omit=dev` to exclude Electron devDependencies)
 - [x] Static file serving from /public directory
 - [x] Trust proxy configuration for Railway
+
+## Desktop App (Electron)
+- [x] Electron main process (`electron/main.js`) — BrowserWindow, tray, IPC, updater
+- [x] Secure preload script (`electron/preload.js`) — contextBridge API surface
+- [x] System tray icon with show/hide window on click
+- [x] Hide-to-tray on window close (app keeps running in background)
+- [x] Single-instance lock (second launch focuses existing window)
+- [x] Native OS notifications via IPC (Windows Action Center, macOS Notification Center)
+- [x] Notification click navigates to the relevant group
+- [x] Taskbar overlay badge with unread count
+- [x] Taskbar button flash on new messages when window is unfocused
+- [x] Auto-launch at system startup (configurable via `window.electronAPI.setLaunchAtStartup`)
+- [x] Auto-updater via electron-updater (GitHub Releases)
+- [x] Persistent config via electron-store (server URL, window size, startup preference)
+- [x] Configurable server URL (supports Railway or self-hosted deployments)
+- [x] Open external links in default browser (not inside Electron)
+- [x] Spellcheck in message input
+- [x] Windows NSIS installer and portable executable via electron-builder
+- [x] macOS .dmg and Linux .AppImage/.deb builds supported
 
 ## Additional Features
 - [x] Audio notification sound (Web Audio API)
