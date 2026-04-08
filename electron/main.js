@@ -91,9 +91,7 @@ async function createWindow() {
   app.setAppUserModelId('com.gaychat.app');
 
   const iconPath = getIconPath();
-  const icon = iconPath.endsWith('.svg')
-    ? nativeImage.createFromPath(iconPath)
-    : nativeImage.createFromPath(iconPath);
+  const icon = nativeImage.createFromPath(iconPath);
 
   mainWindow = new BrowserWindow({
     width,

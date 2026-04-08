@@ -196,6 +196,15 @@ function sendNativeNotification(title, body, groupId) {
   }
 }
 
+// Build the notification body text for a message, using the decrypted preview
+// when available and falling back to type-based labels for media/encrypted content.
+function getNotificationBody(msg, preview) {
+  if (msg.type === 'image') return '[Image]';
+  if (msg.type === 'file') return '[File: ' + (msg.filename || '') + ']';
+  if (msg.type === 'whisper') return '[Whisper]';
+  return preview !== '[encrypted]' ? preview : 'New message';
+}
+
 // ── Page title notification ──────────────────────────────────────────────────
 function updatePageTitleNotification() {
   if (unreadNotificationCount > 0) {
@@ -1143,13 +1152,9 @@ function initSocket() {
       if (msg.senderId !== currentUser.id) {
         const groupData = groups.find(g => g.id === msg.groupId);
         const groupName = groupData ? groupData.name : 'GayChat';
-        const notifBody = msg.type === 'image' ? '[Image]'
-          : msg.type === 'file' ? '[File: ' + (msg.filename || '') + ']'
-          : msg.type === 'whisper' ? '[Whisper]'
-          : preview !== '[encrypted]' ? preview : 'New message';
         sendNativeNotification(
           `${msg.senderName} in ${groupName}`,
-          notifBody,
+          getNotificationBody(msg, preview),
           msg.groupId
         );
       }
@@ -1170,10 +1175,9 @@ function initSocket() {
     if (!document.hasFocus() && msg.senderId !== currentUser.id) {
       const groupData = groups.find(g => g.id === msg.groupId);
       const groupName = groupData ? groupData.name : 'GayChat';
-      const notifBody2 = preview2 !== '[encrypted]' ? preview2 : 'New message';
       sendNativeNotification(
         `${msg.senderName} in ${groupName}`,
-        notifBody2,
+        getNotificationBody(msg, preview2),
         msg.groupId
       );
     }
