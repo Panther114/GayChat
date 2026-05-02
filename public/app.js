@@ -268,7 +268,7 @@ let allMessages = [];
 let oldestMessageId = null;
 let loadingOlder = false;
 let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
-let originalPageTitle = 'GayChat 🏳️‍🌈';
+let originalPageTitle = 'Gchat ';
 let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
 
@@ -1151,7 +1151,7 @@ function initSocket() {
       // Send native OS notification when a message arrives in a background group
       if (msg.senderId !== currentUser.id) {
         const groupData = groups.find(g => g.id === msg.groupId);
-        const groupName = groupData ? groupData.name : 'GayChat';
+        const groupName = groupData ? groupData.name : 'Gchat';
         sendNativeNotification(
           `${msg.senderName} in ${groupName}`,
           getNotificationBody(msg, preview),
@@ -1174,7 +1174,7 @@ function initSocket() {
     // Send native OS notification when the window is not focused (active group)
     if (!document.hasFocus() && msg.senderId !== currentUser.id) {
       const groupData = groups.find(g => g.id === msg.groupId);
-      const groupName = groupData ? groupData.name : 'GayChat';
+      const groupName = groupData ? groupData.name : 'Gchat';
       sendNativeNotification(
         `${msg.senderName} in ${groupName}`,
         getNotificationBody(msg, preview2),
@@ -1534,7 +1534,7 @@ async function exportChat() {
   const a = document.createElement('a');
   const date = new Date().toISOString().slice(0, 10);
   const gname = (currentGroupData ? currentGroupData.name : 'chat').replace(/[^a-zA-Z0-9]/g, '-');
-  a.href = url; a.download = 'gaychat-' + gname + '-' + date + '.txt';
+  a.href = url; a.download = 'Gchat-' + gname + '-' + date + '.txt';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

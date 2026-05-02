@@ -1,4 +1,4 @@
-# GayChat 🏳️‍🌈
+# Gchat 
 
 A modern, **end-to-end encrypted** group chat application built with Node.js, Express, Socket.IO, and SQLite — deployable in one click to [Railway.app](https://railway.app).
 
@@ -52,7 +52,7 @@ By default, Railway's filesystem is **ephemeral** — it is wiped on every redep
 
 1. In your Railway project, go to **New** → **Volume**.
 2. Mount the volume at **`/data`**.
-3. In the **Variables** tab, add: `DB_PATH` = `/data/gaychat.db`
+3. In the **Variables** tab, add: `DB_PATH` = `/data/Gchat.db`
 
 Railway will now store the database file on the mounted volume and it will survive redeploys.
 
@@ -79,7 +79,7 @@ Railway will now store the database file on the mounted volume and it will survi
 |---|---|---|
 | `SESSION_SECRET` | ✅ Yes | Secret for signing session cookies. Use a long random string in production. |
 | `PORT` | Set by Railway | Port the server listens on. Defaults to `3000` locally. |
-| `DB_PATH` | No | Full path for the SQLite database file (e.g. `/data/gaychat.db`). Useful with Railway Volumes for persistence. Defaults to `./gaychat.db`. |
+| `DB_PATH` | No | Full path for the SQLite database file (e.g. `/data/Gchat.db`). Useful with Railway Volumes for persistence. Defaults to `./Gchat.db`. |
 | `ADMIN_SECRET` | No | Set this to enable the `GET /api/admin/users` endpoint. Requests must supply `Authorization: Bearer <value>`. |
 
 ---
@@ -121,7 +121,7 @@ See the **⚠️ Persistent Storage on Railway** section above — it is critica
 
 1. **Fork** this repository to your GitHub account.
 2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
-3. Select your fork of `GayChat`.
+3. Select your fork of `Gchat`.
 4. Railway will auto-detect Node.js and run `npm start`.
 5. In the **Variables** tab, add: `SESSION_SECRET` = `<some long random string>`.
 6. Your app will be live at the auto-generated Railway URL!
@@ -130,7 +130,7 @@ See the **⚠️ Persistent Storage on Railway** section above — it is critica
 
 ## Windows Desktop App (Electron)
 
-GayChat can be run as a native Windows desktop app (also supports macOS and Linux) using Electron. The desktop app adds:
+Gchat can be run as a native Windows desktop app (also supports macOS and Linux) using Electron. The desktop app adds:
 
 - 🖥️ **System tray** — minimises to tray; click to show/hide
 - 🔔 **Native notifications** — Windows Action Center alerts with click-to-focus on the right group
@@ -156,8 +156,8 @@ npm run electron
 
 ```bash
 npm run build:win
-# Output: dist/GayChat Setup <version>.exe  (installer)
-#         dist/GayChat <version>.exe         (portable)
+# Output: dist/Gchat Setup <version>.exe  (installer)
+#         dist/Gchat <version>.exe         (portable)
 ```
 
 See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full installation guide, including icon setup, server URL configuration, notification permissions, and troubleshooting.

@@ -1,6 +1,6 @@
-# GayChat Changelog
+# Gchat Changelog
 
-This document tracks all changes to the GayChat project in a PR-based format.
+This document tracks all changes to the Gchat project in a PR-based format.
 
 ---
 
@@ -8,7 +8,7 @@ This document tracks all changes to the GayChat project in a PR-based format.
 
 **What changed**
 
-- **Electron main process (`electron/main.js`)**: Added a full Electron main process that creates a `BrowserWindow` loading the configured GayChat server URL. Includes:
+- **Electron main process (`electron/main.js`)**: Added a full Electron main process that creates a `BrowserWindow` loading the configured Gchat server URL. Includes:
   - Single-instance lock (`app.requestSingleInstanceLock`) — launching a second instance focuses the existing window.
   - System tray icon with right-click context menu (Open, Check for Updates, Quit) and click-to-toggle-window behaviour.
   - Hide-to-tray on window close — the app keeps running in the background like WeChat.
@@ -18,7 +18,7 @@ This document tracks all changes to the GayChat project in a PR-based format.
   - Auto-launch at system startup via `app.setLoginItemSettings`, configurable at runtime.
   - Auto-updater via `electron-updater`: checks GitHub Releases on startup (packaged builds only), prompts for download/restart.
   - Persistent config via `electron-store` (server URL, window bounds, startup preference).
-  - `app.setAppUserModelId('com.gaychat.app')` for correct Windows Action Center grouping.
+  - `app.setAppUserModelId('com.Gchat.app')` for correct Windows Action Center grouping.
 
 - **Preload script (`electron/preload.js`)**: Implements the secure renderer ↔ main bridge using `contextBridge.exposeInMainWorld`. Exposes `window.electronAPI` with: `setUnreadCount`, `showNotification`, `onFocusGroup`, `getLaunchAtStartup`, `setLaunchAtStartup`, `getServerUrl`, `setServerUrl`. Security settings: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
 
@@ -32,7 +32,7 @@ This document tracks all changes to the GayChat project in a PR-based format.
 - **`package.json`**:
   - Added `devDependencies`: `electron ^41.0.0`, `electron-builder ^25.0.0`, `electron-updater ^6.3.0`, `electron-store ^10.0.0`, `cross-env ^7.0.3`.
   - Added scripts: `electron`, `electron:dev`, `build:win`, `build:mac`, `build:linux`.
-  - Added `electron-builder` `build` config: appId `com.gaychat.app`, NSIS installer + portable `.exe`, Windows/macOS/Linux targets, GitHub publish config.
+  - Added `electron-builder` `build` config: appId `com.Gchat.app`, NSIS installer + portable `.exe`, Windows/macOS/Linux targets, GitHub publish config.
 
 - **`railway.json`**: Added `"buildCommand": "npm install --omit=dev"` to the `build` block. This prevents Railway from downloading the Electron binary (a large platform-specific download) on every server deploy. Electron and electron-builder are `devDependencies` and are not needed on the server.
 
@@ -58,7 +58,7 @@ This document tracks all changes to the GayChat project in a PR-based format.
 - Existing Railway deployments will continue to work without any additional configuration.
 
 **Notes / Risks**
-- The desktop app requires a reachable GayChat server. The server URL can be changed at runtime via `window.electronAPI.setServerUrl(url)` in DevTools.
+- The desktop app requires a reachable Gchat server. The server URL can be changed at runtime via `window.electronAPI.setServerUrl(url)` in DevTools.
 - `electron-store ^10.0.0` is ESM-only; `main.js` uses dynamic `import()` to load it.
 - The taskbar overlay icon uses an SVG-generated badge. On Windows, `setOverlayIcon` requires a taskbar button (i.e. the window must have been shown at least once).
 - Code-signing is not included; users may see a Windows SmartScreen warning for unsigned builds.
@@ -86,7 +86,7 @@ This document tracks all changes to the GayChat project in a PR-based format.
 
 - **#10 – Account deletion transaction (server.js)**: Wrapped `deleteUserMemberships` and `deleteUser` in a `db.transaction()`. If either statement fails, both are rolled back atomically.
 
-- **#11 – Session secret fallback (server.js)**: Replaced the hard-coded `'gaychat-dev-secret'` fallback with `crypto.randomBytes(32).toString('hex')`. If the DB lookup fails the server still starts safely, at the cost of session invalidation on restart.
+- **#11 – Session secret fallback (server.js)**: Replaced the hard-coded `'Gchat-dev-secret'` fallback with `crypto.randomBytes(32).toString('hex')`. If the DB lookup fails the server still starts safely, at the cost of session invalidation on restart.
 
 - **#14 – Login brute-force protection (server.js)**: Added an in-memory per-IP rate limiter. After 10 consecutive failed login attempts within a 15-minute window, the IP receives HTTP 429 until the window resets. Stale entries are pruned on a 5-minute interval. Successful login clears the counter.
 

@@ -1,5 +1,5 @@
 {
-  "name": "gaychat",
+  "name": "Gchat",
   "version": "1.0.0",
   "description": "End-to-end encrypted group chat app",
   "main": "server.js",
@@ -31,9 +31,9 @@
     "electron-updater": "^6.3.0"
   },
   "build": {
-    "appId": "com.gaychat.app",
-    "productName": "GayChat",
-    "copyright": "Copyright © 2024 GayChat",
+    "appId": "com.Gchat.app",
+    "productName": "Gchat",
+    "copyright": "Copyright © 2024 Gchat",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -60,7 +60,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "publisherName": "GayChat"
+      "publisherName": "Gchat"
     },
     "nsis": {
       "oneClick": false,
@@ -69,7 +69,7 @@
       "uninstallerIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GayChat"
+      "shortcutName": "Gchat"
     },
     "mac": {
       "target": ["dmg"],

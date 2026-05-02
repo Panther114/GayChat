@@ -1,4 +1,4 @@
-/* GayChat - Modern Dark UI */
+/* Gchat - Modern Dark UI */
 
 /* ── CSS Reset & Variables ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -176,7 +176,6 @@ body.chat-body {
 }
 .brand-icon { font-size: 20px; }
 .brand-name { font-size: 17px; font-weight: 700; background: linear-gradient(135deg, #667eea, #00d4aa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.brand-flag { font-size: 16px; }
 
 .conn-status {
   display: flex;
