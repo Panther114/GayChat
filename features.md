@@ -1,6 +1,6 @@
-# GayChat Features
+# Gchat Features
 
-This document tracks all implemented features in the GayChat application. All features listed below are currently implemented and working.
+This document tracks all implemented features in the Gchat application. All features listed below are currently implemented and working.
 
 ## Authentication & User Management
 - [x] User registration with username and password

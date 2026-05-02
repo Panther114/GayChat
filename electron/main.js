@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * GayChat Desktop — Electron Main Process
+ * Gchat Desktop — Electron Main Process
  *
  * Responsibilities:
  *  - Create and manage the BrowserWindow
@@ -35,7 +35,7 @@ async function getStore() {
   const { default: Store } = await import('electron-store');
   store = new Store({
     defaults: {
-      serverUrl: 'https://gaychat.up.railway.app',
+      serverUrl: 'https://Gchat.up.railway.app',
       launchAtStartup: false,
       windowBounds: { width: 1100, height: 700 },
     },
@@ -88,7 +88,7 @@ async function createWindow() {
 
   // Set Windows App User Model ID so notifications group correctly in the
   // Action Center and display the correct app name / icon.
-  app.setAppUserModelId('com.gaychat.app');
+  app.setAppUserModelId('com.Gchat.app');
 
   const iconPath = getIconPath();
   const icon = nativeImage.createFromPath(iconPath);
@@ -98,7 +98,7 @@ async function createWindow() {
     height,
     minWidth: 800,
     minHeight: 500,
-    title: 'GayChat 🏳️‍🌈',
+    title: 'Gchat ',
     icon,
     backgroundColor: '#1a1a2e',
     show: false, // shown after ready-to-show to avoid flash
@@ -111,10 +111,10 @@ async function createWindow() {
     },
   });
 
-  // Load the GayChat server
+  // Load the Gchat server
   mainWindow.loadURL(serverUrl).catch(() => {
     mainWindow.loadFile(path.join(__dirname, 'offline.html')).catch(() => {
-      mainWindow.webContents.loadURL('data:text/html,<h1>Unable to connect to GayChat server.</h1><p>Check your internet connection and try again.</p>');
+      mainWindow.webContents.loadURL('data:text/html,<h1>Unable to connect to Gchat server.</h1><p>Check your internet connection and try again.</p>');
     });
   });
 
@@ -161,7 +161,7 @@ async function createTray() {
     : trayIcon.resize({ width: 16, height: 16 });
 
   tray = new Tray(trayIconSmall);
-  tray.setToolTip('GayChat 🏳️‍🌈');
+  tray.setToolTip('Gchat ');
   updateTrayMenu();
 
   tray.on('click', () => {
@@ -182,7 +182,7 @@ async function createTray() {
 
 function updateTrayMenu(unread = 0) {
   if (!tray) return;
-  const label = unread > 0 ? `GayChat (${unread} unread)` : 'GayChat';
+  const label = unread > 0 ? `Gchat (${unread} unread)` : 'Gchat';
   const contextMenu = Menu.buildFromTemplate([
     {
       label,
@@ -190,7 +190,7 @@ function updateTrayMenu(unread = 0) {
     },
     { type: 'separator' },
     {
-      label: 'Open GayChat',
+      label: 'Open Gchat',
       click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } },
     },
     {
@@ -204,7 +204,7 @@ function updateTrayMenu(unread = 0) {
     },
   ]);
   tray.setContextMenu(contextMenu);
-  tray.setToolTip(unread > 0 ? `GayChat — ${unread} unread message${unread === 1 ? '' : 's'}` : 'GayChat 🏳️‍🌈');
+  tray.setToolTip(unread > 0 ? `Gchat — ${unread} unread message${unread === 1 ? '' : 's'}` : 'Gchat ');
 }
 
 // ── IPC handlers (renderer → main) ───────────────────────────────────────────
@@ -230,7 +230,7 @@ ipcMain.on('set-unread-count', (_event, count) => {
 ipcMain.on('show-notification', (_event, { title, body, groupId }) => {
   if (!Notification.isSupported()) return;
   const notif = new Notification({
-    title: title || 'GayChat',
+    title: title || 'Gchat',
     body: body || 'New message',
     icon: getIconPath(),
     urgency: 'normal',
@@ -302,7 +302,7 @@ function setupAutoUpdater() {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Available',
-      message: `GayChat ${info.version} is available.`,
+      message: `Gchat ${info.version} is available.`,
       detail: 'Would you like to download and install it?',
       buttons: ['Download', 'Later'],
       defaultId: 0,
@@ -316,7 +316,7 @@ function setupAutoUpdater() {
       type: 'info',
       title: 'Update Ready',
       message: 'The update has been downloaded.',
-      detail: 'Restart GayChat to apply the update.',
+      detail: 'Restart Gchat to apply the update.',
       buttons: ['Restart Now', 'Later'],
       defaultId: 0,
     }).then(({ response }) => {

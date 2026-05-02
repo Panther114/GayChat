@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * GayChat Desktop — Electron Preload Script
+ * Gchat Desktop — Electron Preload Script
  *
  * This script runs in a privileged context before the renderer page loads.
  * It uses contextBridge to expose a narrow, safe API surface (electronAPI)

@@ -1,5 +1,5 @@
 /**
- * GayChat - Encrypted Group Messaging Server
+ * Gchat - Encrypted Group Messaging Server
  * Express + Socket.IO + SQLite backend
  */
 
@@ -76,11 +76,11 @@ function clearLoginAttempts(ip) {
 }
 
 // ── Database ──────────────────────────────────────────────────────────────────
-const DB_PATH = process.env.DB_PATH || './gaychat.db';
+const DB_PATH = process.env.DB_PATH || './Gchat.db';
 const SESSIONS_DIR = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : '.';
 
 if (!process.env.DB_PATH) {
-  console.warn('⚠️  WARNING: DB_PATH not set. Database is stored at ./gaychat.db on ephemeral filesystem. Data will be lost on redeploy. Set DB_PATH=/data/gaychat.db and mount a Railway Volume to persist data.');
+  console.warn('⚠️  WARNING: DB_PATH not set. Database is stored at ./Gchat.db on ephemeral filesystem. Data will be lost on redeploy. Set DB_PATH=/data/Gchat.db and mount a Railway Volume to persist data.');
 }
 
 const db = new Database(DB_PATH);
@@ -1238,5 +1238,5 @@ io.on('connection', (socket) => {
 // ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`GayChat server running on port ${PORT}`);
+  console.log(`Gchat server running on port ${PORT}`);
 });
