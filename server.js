@@ -141,7 +141,6 @@ const migrations = [
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
   "ALTER TABLE messages ADD COLUMN edited_at TEXT",
-  "CREATE TABLE IF NOT EXISTS message_reads (message_id TEXT NOT NULL, user_id TEXT NOT NULL, read_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (message_id, user_id))",
   "CREATE INDEX IF NOT EXISTS idx_message_reads_message_id ON message_reads (message_id)",
   // Composite index to support efficient pagination ORDER BY (created_at DESC, id DESC)
   "CREATE INDEX IF NOT EXISTS idx_messages_group_pagination ON messages (group_id, created_at DESC, id DESC)",

@@ -201,9 +201,9 @@ function ensureReadObserver() {
       if (!entry.isIntersecting || entry.intersectionRatio < 0.75) continue;
       const row = entry.target;
       const messageId = row?.dataset?.msgId;
-      if (!messageId || pendingReadMessageIds.has(messageId) || readMarkedMessageIds.has(messageId)) continue;
+      if (!messageId || pendingReadMessageIds.has(messageId)) continue;
       pendingReadMessageIds.add(messageId);
-      readMarkedMessageIds.add(messageId);
+      readObserver.unobserve(row);
       socket.emit('mark_message_read', { groupId: currentGroupId, messageId });
     }
   }, {
@@ -230,7 +230,6 @@ function observeCurrentGroupRowsForRead() {
 
 function resetReadTracking() {
   pendingReadMessageIds = new Set();
-  readMarkedMessageIds = new Set();
   if (readObserver) {
     readObserver.disconnect();
     readObserver = null;
@@ -352,7 +351,6 @@ let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
 let readObserver = null;
 let pendingReadMessageIds = new Set();
-let readMarkedMessageIds = new Set();
 
 // Decryption failure text constants (must match renderMsgContent output)
 const MSG_NO_KEY = '[No key — set group key to decrypt]';
