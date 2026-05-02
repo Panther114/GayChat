@@ -158,6 +158,84 @@ function formatTime(iso) {
   });
 }
 
+function normalizeDeliveryCounts(totalRecipients, readCount) {
+  const total = Math.max(0, Number(totalRecipients) || 0);
+  const read = Math.min(total, Math.max(0, Number(readCount) || 0));
+  return { total, read };
+}
+
+function renderDeliveryTicks(el, totalRecipients, readCount) {
+  if (!el) return;
+  const { total, read } = normalizeDeliveryCounts(totalRecipients, readCount);
+  el.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const tick = document.createElement('span');
+    tick.className = 'msg-delivery-tick' + (i < read ? ' read' : '');
+    tick.textContent = '✓';
+    el.appendChild(tick);
+  }
+}
+
+function updateDeliveryForMessage(messageId, readCount) {
+  const del = $('del-' + messageId);
+  if (!del) return;
+  const totalRecipients = Number(del.dataset.totalRecipients) || 0;
+  del.dataset.readCount = String(Math.max(0, Number(readCount) || 0));
+  renderDeliveryTicks(del, totalRecipients, readCount);
+}
+
+function canTrackMessageRead(msg) {
+  return !!(
+    msg &&
+    currentUser &&
+    msg.groupId === currentGroupId &&
+    msg.senderId !== currentUser.id
+  );
+}
+
+function ensureReadObserver() {
+  if (readObserver) return;
+  readObserver = new IntersectionObserver((entries) => {
+    if (!socket || !currentGroupId || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+    for (const entry of entries) {
+      if (!entry.isIntersecting || entry.intersectionRatio < 0.75) continue;
+      const row = entry.target;
+      const messageId = row?.dataset?.msgId;
+      if (!messageId || pendingReadMessageIds.has(messageId)) continue;
+      pendingReadMessageIds.add(messageId);
+      readObserver.unobserve(row);
+      socket.emit('mark_message_read', { groupId: currentGroupId, messageId });
+    }
+  }, {
+    root: messagesArea(),
+    threshold: [0.75],
+  });
+}
+
+function observeMessageForRead(row, msg) {
+  if (!row || row.nodeType !== 1 || !canTrackMessageRead(msg)) return;
+  ensureReadObserver();
+  readObserver.observe(row);
+}
+
+function observeCurrentGroupRowsForRead() {
+  const area = messagesArea();
+  if (!area || !currentGroupId || !currentUser) return;
+  const rows = area.querySelectorAll('.msg-row[data-msg-id]');
+  for (const row of rows) {
+    if (row.dataset.senderId === currentUser.id) continue;
+    observeMessageForRead(row, { groupId: currentGroupId, senderId: row.dataset.senderId });
+  }
+}
+
+function resetReadTracking() {
+  pendingReadMessageIds = new Set();
+  if (readObserver) {
+    readObserver.disconnect();
+    readObserver = null;
+  }
+}
+
 // ── Audio: notification sound via Web Audio ──────────────────────────────────
 let audioCtx = null;
 function playNotifSound() {
@@ -271,6 +349,8 @@ let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
 let originalPageTitle = 'Gchat ';
 let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
+let readObserver = null;
+let pendingReadMessageIds = new Set();
 
 // Decryption failure text constants (must match renderMsgContent output)
 const MSG_NO_KEY = '[No key — set group key to decrypt]';
@@ -328,9 +408,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Clear page title notification when page is focused
-  window.addEventListener('focus', clearPageTitleNotification);
+  window.addEventListener('focus', () => {
+    clearPageTitleNotification();
+    observeCurrentGroupRowsForRead();
+  });
   window.addEventListener('blur', () => {
     // Start tracking unread when page loses focus
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') observeCurrentGroupRowsForRead();
   });
 });
 
@@ -425,6 +511,7 @@ async function selectGroup(groupId) {
   whisperRecipients = [];
   messageMode = 'normal';
   updateWhisperBtn();
+  resetReadTracking();
 
   // Reset unread for this group
   unreadCounts[groupId] = 0;
@@ -469,6 +556,7 @@ async function selectGroup(groupId) {
   // Load messages
   await loadMessages(groupId);
   await loadMembers(groupId);
+  observeCurrentGroupRowsForRead();
 
   // Close mobile sidebar
   if (window.innerWidth <= 768) closeSidebar();
@@ -505,7 +593,12 @@ async function loadMessages(groupId, before) {
       // to avoid per-row reflows during the initial load (#26).
       const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
       const fragment = document.createDocumentFragment();
-      for (const row of rows) { if (row) fragment.appendChild(row); }
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+        observeMessageForRead(row, msgs[i]);
+        fragment.appendChild(row);
+      }
       messagesArea().appendChild(fragment);
       scrollToBottom(true);
     } else {
@@ -515,6 +608,7 @@ async function loadMessages(groupId, before) {
       const oldFirst = area.querySelector('.msg-row, .msg-system');
       for (let i = msgs.length - 1; i >= 0; i--) {
         const row = await buildMessageRow(msgs[i]);
+        observeMessageForRead(row, msgs[i]);
         if (oldFirst) area.insertBefore(row, oldFirst);
         else area.appendChild(row);
       }
@@ -717,7 +811,10 @@ async function buildMessageRow(msg) {
     const del = document.createElement('span');
     del.className = 'msg-delivery';
     del.id = 'del-' + msg.id;
-    del.textContent = '✓';
+    const { total, read } = normalizeDeliveryCounts(msg.totalRecipients, msg.readCount);
+    del.dataset.totalRecipients = String(total);
+    del.dataset.readCount = String(read);
+    renderDeliveryTicks(del, total, read);
     meta.appendChild(del);
   }
   bubble.appendChild(meta);
@@ -845,6 +942,7 @@ async function appendMessageBubble(msg, scroll) {
   }
 
   area.appendChild(row);
+  observeMessageForRead(row, msg);
 
   // Scroll behavior
   if (scroll !== false) {
@@ -1183,9 +1281,11 @@ function initSocket() {
     }
   });
 
-  socket.on('message_delivered', ({ messageId }) => {
-    const del = $('del-' + messageId);
-    if (del) { del.textContent = '✓✓'; del.classList.add('delivered'); }
+  socket.on('message_read_update', ({ messageId, readCount }) => {
+    pendingReadMessageIds.delete(messageId);
+    updateDeliveryForMessage(messageId, readCount);
+    const stored = allMessages.find(m => m.id === messageId);
+    if (stored) stored.readCount = Math.max(0, Number(readCount) || 0);
   });
 
   socket.on('message_deleted', ({ messageId }) => {
@@ -2054,8 +2154,11 @@ async function loadOlderMessages() {
 
     // Assemble into a fragment (single DOM mutation, no scroll drift)
     const fragment = document.createDocumentFragment();
-    for (const row of rows) {
-      if (row) fragment.appendChild(row);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      observeMessageForRead(row, msgs[i]);
+      fragment.appendChild(row);
     }
 
     // Single DOM mutation — prepend the whole fragment

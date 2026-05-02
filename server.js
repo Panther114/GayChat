@@ -121,6 +121,13 @@ db.exec(`
     iv TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS message_reads (
+    message_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id)
+  );
 `);
 
 // Safe migrations — each wrapped in try/catch so re-runs are harmless
@@ -129,10 +136,12 @@ const migrations = [
   "ALTER TABLE messages ADD COLUMN reply_to TEXT",
   "ALTER TABLE messages ADD COLUMN filename TEXT",
   "ALTER TABLE messages ADD COLUMN whisper_to TEXT",
+  "ALTER TABLE messages ADD COLUMN total_recipients INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
   "ALTER TABLE messages ADD COLUMN edited_at TEXT",
+  "CREATE INDEX IF NOT EXISTS idx_message_reads_message_id ON message_reads (message_id)",
   // Composite index to support efficient pagination ORDER BY (created_at DESC, id DESC)
   "CREATE INDEX IF NOT EXISTS idx_messages_group_pagination ON messages (group_id, created_at DESC, id DESC)",
 ];
@@ -203,6 +212,7 @@ const stmts = {
     WHERE gm.group_id = ?
     ORDER BY gm.joined_at ASC
   `),
+  countGroupMembers: db.prepare('SELECT COUNT(*) AS count FROM group_members WHERE group_id = ?'),
 
   // Admin
   getAllUsers: db.prepare('SELECT id, username, icon_color, created_at FROM users ORDER BY created_at DESC'),
@@ -211,7 +221,9 @@ const stmts = {
   getLastMessages: db.prepare(`
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
-           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at
+           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at,
+           m.total_recipients,
+           (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.group_id = ?
@@ -222,7 +234,9 @@ const stmts = {
     WITH ref AS (SELECT created_at, id FROM messages WHERE id = ?)
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
-           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at
+           m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at,
+           m.total_recipients,
+           (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     CROSS JOIN ref
@@ -234,9 +248,11 @@ const stmts = {
     LIMIT ?
   `),
   insertMessage: db.prepare(
-    'INSERT INTO messages (id, group_id, sender_id, encrypted_content, iv, type, reply_to, filename, whisper_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, group_id, sender_id, encrypted_content, iv, type, reply_to, filename, whisper_to, total_recipients) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ),
   findMessageById: db.prepare('SELECT * FROM messages WHERE id = ?'),
+  markMessageRead: db.prepare('INSERT OR IGNORE INTO message_reads (message_id, user_id) VALUES (?, ?)'),
+  getMessageReadCount: db.prepare('SELECT COUNT(*) AS count FROM message_reads WHERE message_id = ?'),
   deleteMessage: db.prepare('DELETE FROM messages WHERE id = ?'),
   updateMessage: db.prepare(
     'UPDATE messages SET encrypted_content = ?, iv = ?, edited_at = ? WHERE id = ?'
@@ -351,6 +367,8 @@ function formatMessage(m) {
     whisperTo: m.whisper_to || null,
     createdAt: m.created_at,
     editedAt: m.edited_at || null,
+    totalRecipients: Math.max(0, Number(m.total_recipients) || 0),
+    readCount: Math.max(0, Number(m.read_count) || 0),
   };
 }
 
@@ -858,9 +876,10 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
   const msgId = uuidv4();
   const createdAt = new Date().toISOString();
   const user = stmts.findUserById.get(userId);
+  const totalRecipients = Math.max(0, (stmts.countGroupMembers.get(groupId)?.count || 0) - 1);
 
   try {
-    stmts.insertMessage.run(msgId, groupId, userId, encryptedContent, iv, msgType, null, safeFilename, null);
+    stmts.insertMessage.run(msgId, groupId, userId, encryptedContent, iv, msgType, null, safeFilename, null, totalRecipients);
   } catch (err) {
     console.error('DB insert file error:', err);
     return res.status(500).json({ error: 'Failed to save file' });
@@ -880,6 +899,8 @@ app.post('/api/groups/:groupId/upload', (req, res) => {
     whisperTo: null,
     createdAt,
     editedAt: null,
+    totalRecipients,
+    readCount: 0,
   };
 
   io.to(groupId).emit('new_message', payload);
@@ -1066,9 +1087,21 @@ io.on('connection', (socket) => {
 
     const msgId = uuidv4();
     const createdAt = new Date().toISOString();
+    const totalRecipients = Math.max(0, (stmts.countGroupMembers.get(groupId)?.count || 0) - 1);
 
     try {
-      stmts.insertMessage.run(msgId, groupId, socket.userId, encryptedContent, iv, 'text', replyTo || null, null, null);
+      stmts.insertMessage.run(
+        msgId,
+        groupId,
+        socket.userId,
+        encryptedContent,
+        iv,
+        'text',
+        replyTo || null,
+        null,
+        null,
+        totalRecipients
+      );
     } catch (err) {
       console.error('DB insert message error:', err);
       socket.emit('error', { message: 'Failed to save message' });
@@ -1089,16 +1122,11 @@ io.on('connection', (socket) => {
       whisperTo: null,
       createdAt,
       editedAt: null,
+      totalRecipients,
+      readCount: 0,
     };
 
     io.to(groupId).emit('new_message', payload);
-
-    // Delivery ack: check if other sockets are in the room
-    const roomSockets = getPresence(groupId);
-    const hasOtherRecipients = roomSockets.some(sid => sid !== socket.id);
-    if (hasOtherRecipients) {
-      socket.emit('message_delivered', { messageId: msgId });
-    }
   });
 
   // ── send_whisper ──────────────────────────────────────────────────────────
@@ -1148,11 +1176,23 @@ io.on('connection', (socket) => {
 
     const msgId = uuidv4();
     const createdAt = new Date().toISOString();
+    const totalRecipients = Math.max(0, whisperTo.length);
     // Store whisper recipients as JSON array for safety
     const whisperToStr = JSON.stringify(whisperTo.map(String));
 
     try {
-      stmts.insertMessage.run(msgId, groupId, socket.userId, encryptedContent, iv, 'whisper', replyTo || null, null, whisperToStr);
+      stmts.insertMessage.run(
+        msgId,
+        groupId,
+        socket.userId,
+        encryptedContent,
+        iv,
+        'whisper',
+        replyTo || null,
+        null,
+        whisperToStr,
+        totalRecipients
+      );
     } catch (err) {
       console.error('DB insert whisper error:', err);
       socket.emit('error', { message: 'Failed to save whisper' });
@@ -1173,6 +1213,8 @@ io.on('connection', (socket) => {
       whisperTo: whisperToStr,
       createdAt,
       editedAt: null,
+      totalRecipients,
+      readCount: 0,
     };
 
     // Send to sender + recipients only
@@ -1184,6 +1226,31 @@ io.on('connection', (socket) => {
         s.emit('new_message', payload);
       }
     }
+  });
+
+  socket.on('mark_message_read', ({ groupId, messageId }) => {
+    if (!groupId || !messageId) return;
+
+    const member = stmts.isMember.get(groupId, socket.userId);
+    if (!member) return;
+
+    const message = stmts.findMessageById.get(messageId);
+    if (!message || message.group_id !== groupId) return;
+    if (message.sender_id === socket.userId) return;
+
+    if (message.type === 'whisper') {
+      let recipients = [];
+      try {
+        recipients = JSON.parse(message.whisper_to || '[]');
+      } catch {
+        return;
+      }
+      if (!Array.isArray(recipients) || !recipients.map(String).includes(String(socket.userId))) return;
+    }
+
+    stmts.markMessageRead.run(messageId, socket.userId);
+    const readCount = Math.max(0, Number(stmts.getMessageReadCount.get(messageId)?.count) || 0);
+    io.to(groupId).emit('message_read_update', { messageId, readCount });
   });
 
   // ── typing ────────────────────────────────────────────────────────────────

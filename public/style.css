@@ -514,8 +514,9 @@ body.chat-body {
 /* Timestamps + delivery */
 .msg-meta { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; color: rgba(255,255,255,.45); white-space: nowrap; flex-shrink: 0; vertical-align: baseline; }
 .msg-row:not(.own) .msg-meta { color: var(--text-muted); }
-.msg-delivery { font-size: 11px; }
-.msg-delivery.delivered { color: var(--accent2); }
+.msg-delivery { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; color: rgba(255,255,255,.45); }
+.msg-delivery-tick { color: rgba(255,255,255,.45); }
+.msg-delivery-tick.read { color: var(--accent2); }
 .msg-edited-badge { font-size: 10px; font-style: italic; opacity: .6; }
 
 /* Inline message edit form */
