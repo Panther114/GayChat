@@ -158,6 +158,11 @@ async function createWindow() {
     },
   });
 
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
   mainWindow.webContents.on('did-fail-load', async (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3 || !validatedURL || validatedURL.startsWith('file://')) {
       return;
@@ -179,11 +184,6 @@ async function createWindow() {
   });
 
   await routeInitialView();
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
-  });
 
   mainWindow.on('resize', async () => {
     const [w, h] = mainWindow.getSize();
@@ -329,9 +329,10 @@ ipcMain.handle('get-desktop-bootstrap', async () => {
 });
 
 ipcMain.handle('check-server-connectivity', async () => {
+  let timeout = null;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    timeout = setTimeout(() => controller.abort(), 8000);
     const response = await fetch(OFFICIAL_SERVER_URL + '/api/auth/csrf', {
       method: 'GET',
       signal: controller.signal,
@@ -345,6 +346,7 @@ ipcMain.handle('check-server-connectivity', async () => {
       checkedAt: new Date().toISOString(),
     };
   } catch (error) {
+    if (timeout) clearTimeout(timeout);
     return {
       ok: false,
       url: OFFICIAL_SERVER_URL,

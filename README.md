@@ -130,14 +130,16 @@ See the **⚠️ Persistent Storage on Railway** section above — it is critica
 
 ## Windows Desktop App (Electron)
 
-Gchat can be run as a native Windows desktop app (also supports macOS and Linux) using Electron. The desktop app adds:
+Gchat can be packaged as a native Windows desktop app using Electron. The desktop shell adds:
 
+- 🧭 **First-run setup wizard** — guided onboarding before opening the hosted sign-in page
+- 🔒 **Locked Railway target** — always connects to `https://gchat.up.railway.app`
 - 🖥️ **System tray** — minimises to tray; click to show/hide
 - 🔔 **Native notifications** — Windows Action Center alerts with click-to-focus on the right group
-- 🔢 **Taskbar badge** — red unread-count overlay on the taskbar icon
+- �� **Taskbar badge** — red unread-count overlay on the taskbar icon
 - ⚡ **Taskbar flash** — taskbar button flashes on new messages when window is in background
-- 🚀 **Auto-launch** — optionally start with Windows
-- 🔄 **Auto-update** — receives updates via GitHub Releases
+- 🚀 **Auto-launch choice** — optionally start with Windows after setup
+- 🔄 **Auto-update** — downloads updates automatically from GitHub Releases
 
 ### Quick start (development)
 
@@ -145,14 +147,11 @@ Gchat can be run as a native Windows desktop app (also supports macOS and Linux)
 # Install all dependencies (including devDependencies for Electron)
 npm install
 
-# Start the server
-node server.js &
-
-# Launch the desktop app
+# Launch the desktop app shell
 npm run electron
 ```
 
-### Build a Windows installer
+### Build Windows packages
 
 ```bash
 npm run build:win
@@ -160,7 +159,7 @@ npm run build:win
 #         dist/Gchat <version>.exe         (portable)
 ```
 
-See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full installation guide, including icon setup, server URL configuration, notification permissions, and troubleshooting.
+See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full Windows guide, including the setup wizard flow, startup behavior, online-only recovery screen, notification permissions, and troubleshooting.
 
 > **Railway note**: The `railway.json` build command is set to `npm install --omit=dev`, so `electron` and `electron-builder` are never installed on the Railway server — they are `devDependencies` only and do not affect the web deployment.
 
