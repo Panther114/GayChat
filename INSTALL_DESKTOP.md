@@ -43,7 +43,7 @@ cd Gchat
 ### 2. Install dependencies
 
 ```bash
-npm install
+npm install --include=dev
 ```
 
 ### 3. Launch the desktop app in development
@@ -139,6 +139,7 @@ When a newer GitHub Release is available:
 
 | Problem | What to do |
 |---|---|
+| `'electron-builder' is not recognized as an internal or external command` | Run `npm install --include=dev` in the repo root, then retry `npm run build:win`. This error means the Electron build tools were not installed. |
 | The setup wizard will not continue past the connection step | Confirm the internet connection is working and `https://gchat.up.railway.app` is reachable. |
 | Gchat opens a recovery screen instead of the sign-in page | The hosted Railway app could not be reached. Use the retry button after the connection improves. |
 | Notifications do not appear | Check Windows notification settings and confirm the permission was allowed during setup. |
