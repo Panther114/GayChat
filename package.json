@@ -2,7 +2,7 @@
   "name": "Gchat",
   "version": "1.0.0",
   "description": "End-to-end encrypted group chat app",
-  "main": "server.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
     "electron": "electron electron/main.js",
@@ -40,13 +40,8 @@
     },
     "files": [
       "electron/**/*",
+      "public/favicon.svg",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/icon.ico",
-        "to": "icon.ico"
-      }
     ],
     "win": {
       "target": [
@@ -59,14 +54,11 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icon.ico",
       "publisherName": "Gchat"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Gchat"

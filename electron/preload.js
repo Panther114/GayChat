@@ -63,19 +63,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
-   * Get the currently configured server URL.
-   * @returns {Promise<string>}
+   * Read the desktop bootstrap state used by the local onboarding pages.
+   * @returns {Promise<{serverUrl: string, launchAtStartup: boolean, onboardingCompleted: boolean}>}
    */
-  getServerUrl() {
-    return ipcRenderer.invoke('get-server-url');
+  getDesktopBootstrap() {
+    return ipcRenderer.invoke('get-desktop-bootstrap');
   },
 
   /**
-   * Change the server URL and reload the window.
-   * @param {string} url
-   * @returns {Promise<boolean>} true on success, false if URL is invalid
+   * Check that the locked Railway deployment is reachable.
+   * @returns {Promise<{ok: boolean, status?: number, url: string, error?: string, checkedAt: string}>}
    */
-  setServerUrl(url) {
-    return ipcRenderer.invoke('set-server-url', url);
+  checkServerConnectivity() {
+    return ipcRenderer.invoke('check-server-connectivity');
+  },
+
+  /**
+   * Persist onboarding choices and launch the hosted app.
+   * @param {{ launchAtStartup?: boolean }} payload
+   * @returns {Promise<{success: boolean}>}
+   */
+  completeOnboarding(payload) {
+    return ipcRenderer.invoke('complete-onboarding', payload);
+  },
+
+  /**
+   * Retry connecting to the hosted app after a failed startup load.
+   * @returns {Promise<boolean>}
+   */
+  retryConnection() {
+    return ipcRenderer.invoke('retry-connection');
+  },
+
+  /**
+   * Returns the latest startup connection failure context for the offline page.
+   * @returns {Promise<{serverUrl: string, lastLoadError: object|null}>}
+   */
+  getConnectionContext() {
+    return ipcRenderer.invoke('get-connection-context');
   },
 });
