@@ -31,7 +31,11 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
 const OFFICIAL_SERVER_URL = 'https://gchat.up.railway.app';
+const OFFICIAL_SERVER_ORIGIN = new URL(OFFICIAL_SERVER_URL).origin;
 const APP_USER_MODEL_ID = 'com.Gchat.app';
+const MIN_WINDOW_WIDTH = 880;
+const MIN_WINDOW_HEIGHT = 600;
+const ERR_ABORTED = -3;
 
 // ── electron-store is ESM-only in v10+; use dynamic import ────────────────────
 let store = null;
@@ -91,7 +95,11 @@ if (!gotLock) {
 }
 
 function isHostedUrl(url) {
-  return typeof url === 'string' && url.startsWith(OFFICIAL_SERVER_URL);
+  try {
+    return new URL(url).origin === OFFICIAL_SERVER_ORIGIN;
+  } catch {
+    return false;
+  }
 }
 
 async function showOnboardingWizard() {
@@ -142,8 +150,8 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width,
     height,
-    minWidth: 880,
-    minHeight: 600,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     title: 'Gchat',
     icon,
     backgroundColor: '#0b1020',
@@ -164,7 +172,7 @@ async function createWindow() {
   });
 
   mainWindow.webContents.on('did-fail-load', async (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    if (!isMainFrame || errorCode === -3 || !validatedURL || validatedURL.startsWith('file://')) {
+    if (!isMainFrame || errorCode === ERR_ABORTED || !validatedURL || validatedURL.startsWith('file://')) {
       return;
     }
     lastLoadError = {

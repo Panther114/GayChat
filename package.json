@@ -2,7 +2,7 @@
   "name": "Gchat",
   "version": "1.0.0",
   "description": "End-to-end encrypted group chat app",
-  "main": "electron/main.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "electron": "electron electron/main.js",
@@ -34,6 +34,9 @@
     "appId": "com.Gchat.app",
     "productName": "Gchat",
     "copyright": "Copyright © 2024 Gchat",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
     "directories": {
       "output": "dist",
       "buildResources": "build"
