@@ -5,13 +5,14 @@
  *
  * Responsibilities:
  *  - Create and manage the BrowserWindow
+ *  - First-run onboarding wizard and startup recovery pages
  *  - System tray icon with hide-to-tray behaviour
  *  - Native Windows notifications via IPC
  *  - Taskbar badge (unread count) and frame flash
  *  - Single-instance lock
  *  - Auto-launch on system startup (configurable)
  *  - Auto-updater via electron-updater
- *  - Persistent config via electron-store (server URL, startup preference)
+ *  - Persistent config via electron-store
  */
 
 const {
@@ -25,8 +26,16 @@ const {
   dialog,
   Notification,
 } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
+
+const OFFICIAL_SERVER_URL = 'https://gchat.up.railway.app';
+const OFFICIAL_SERVER_ORIGIN = new URL(OFFICIAL_SERVER_URL).origin;
+const APP_USER_MODEL_ID = 'com.Gchat.app';
+const MIN_WINDOW_WIDTH = 880;
+const MIN_WINDOW_HEIGHT = 600;
+const ERR_ABORTED = -3;
 
 // ── electron-store is ESM-only in v10+; use dynamic import ────────────────────
 let store = null;
@@ -35,9 +44,10 @@ async function getStore() {
   const { default: Store } = await import('electron-store');
   store = new Store({
     defaults: {
-      serverUrl: 'https://Gchat.up.railway.app',
+      serverUrl: OFFICIAL_SERVER_URL,
       launchAtStartup: false,
       windowBounds: { width: 1100, height: 700 },
+      onboardingCompleted: false,
     },
   });
   return store;
@@ -47,23 +57,27 @@ async function getStore() {
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let lastLoadError = null;
 
 // ── Resolve icon path ─────────────────────────────────────────────────────────
-// During development the icon lives at build/icon.ico.
-// After packaging electron-builder copies it to process.resourcesPath.
 function getIconPath() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'icon.ico');
+  const candidates = [
+    path.join(__dirname, '..', 'public', 'favicon.svg'),
+    path.join(__dirname, '..', 'build', 'icon.ico'),
+    path.join(process.resourcesPath, 'icon.ico'),
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      fs.accessSync(candidate);
+      return candidate;
+    } catch {
+      // try next candidate
+    }
   }
-  // Development: look relative to the repo root (two levels up from electron/)
-  const devPath = path.join(__dirname, '..', 'build', 'icon.ico');
-  const fallback = path.join(__dirname, '..', 'public', 'favicon.svg');
-  try {
-    require('fs').accessSync(devPath);
-    return devPath;
-  } catch {
-    return fallback;
-  }
+
+  return '';
 }
 
 // ── Single-instance lock ──────────────────────────────────────────────────────
@@ -80,15 +94,55 @@ if (!gotLock) {
   });
 }
 
+function isHostedUrl(url) {
+  try {
+    return new URL(url).origin === OFFICIAL_SERVER_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+async function showOnboardingWizard() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  await mainWindow.loadFile(path.join(__dirname, 'wizard.html'));
+}
+
+async function showOfflineScreen() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  await mainWindow.loadFile(path.join(__dirname, 'offline.html'));
+}
+
+async function loadHostedApp() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    await mainWindow.loadURL(OFFICIAL_SERVER_URL);
+  } catch (error) {
+    lastLoadError = {
+      errorCode: 'LOAD_FAILED',
+      errorDescription: error?.message || 'Unable to connect to the hosted app.',
+      url: OFFICIAL_SERVER_URL,
+      failedAt: new Date().toISOString(),
+    };
+    await showOfflineScreen();
+  }
+}
+
+async function routeInitialView() {
+  const cfg = await getStore();
+  cfg.set('serverUrl', OFFICIAL_SERVER_URL);
+  if (!cfg.get('onboardingCompleted')) {
+    await showOnboardingWizard();
+    return;
+  }
+  await loadHostedApp();
+}
+
 // ── Create window ─────────────────────────────────────────────────────────────
 async function createWindow() {
   const cfg = await getStore();
   const { width, height } = cfg.get('windowBounds');
-  const serverUrl = cfg.get('serverUrl');
 
-  // Set Windows App User Model ID so notifications group correctly in the
-  // Action Center and display the correct app name / icon.
-  app.setAppUserModelId('com.Gchat.app');
+  app.setAppUserModelId(APP_USER_MODEL_ID);
 
   const iconPath = getIconPath();
   const icon = nativeImage.createFromPath(iconPath);
@@ -96,12 +150,13 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width,
     height,
-    minWidth: 800,
-    minHeight: 500,
-    title: 'Gchat ',
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
+    title: 'Gchat',
     icon,
-    backgroundColor: '#1a1a2e',
-    show: false, // shown after ready-to-show to avoid flash
+    backgroundColor: '#0b1020',
+    show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -111,27 +166,39 @@ async function createWindow() {
     },
   });
 
-  // Load the Gchat server
-  mainWindow.loadURL(serverUrl).catch(() => {
-    mainWindow.loadFile(path.join(__dirname, 'offline.html')).catch(() => {
-      mainWindow.webContents.loadURL('data:text/html,<h1>Unable to connect to Gchat server.</h1><p>Check your internet connection and try again.</p>');
-    });
-  });
-
-  // Show window once content is ready (avoids white flash)
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
   });
 
-  // Persist window size on resize
+  mainWindow.webContents.on('did-fail-load', async (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === ERR_ABORTED || !validatedURL || validatedURL.startsWith('file://')) {
+      return;
+    }
+    lastLoadError = {
+      errorCode,
+      errorDescription,
+      url: validatedURL,
+      failedAt: new Date().toISOString(),
+    };
+    await showOfflineScreen();
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    const currentUrl = mainWindow?.webContents.getURL() || '';
+    if (isHostedUrl(currentUrl)) {
+      lastLoadError = null;
+    }
+  });
+
+  await routeInitialView();
+
   mainWindow.on('resize', async () => {
     const [w, h] = mainWindow.getSize();
     const c = await getStore();
     c.set('windowBounds', { width: w, height: h });
   });
 
-  // Hide to tray instead of closing
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();
@@ -139,13 +206,11 @@ async function createWindow() {
     }
   });
 
-  // Open external links in the default browser, not inside Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  // Flash taskbar when a new message arrives while window is hidden/unfocused
   mainWindow.on('focus', () => {
     mainWindow.flashFrame(false);
   });
@@ -155,13 +220,12 @@ async function createWindow() {
 async function createTray() {
   const iconPath = getIconPath();
   const trayIcon = nativeImage.createFromPath(iconPath);
-  // Resize for tray (16×16 on Windows)
   const trayIconSmall = trayIcon.isEmpty()
     ? trayIcon
     : trayIcon.resize({ width: 16, height: 16 });
 
   tray = new Tray(trayIconSmall);
-  tray.setToolTip('Gchat ');
+  tray.setToolTip('Gchat');
   updateTrayMenu();
 
   tray.on('click', () => {
@@ -176,7 +240,10 @@ async function createTray() {
   });
 
   tray.on('double-click', () => {
-    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 }
 
@@ -184,14 +251,18 @@ function updateTrayMenu(unread = 0) {
   if (!tray) return;
   const label = unread > 0 ? `Gchat (${unread} unread)` : 'Gchat';
   const contextMenu = Menu.buildFromTemplate([
-    {
-      label,
-      enabled: false,
-    },
+    { label, enabled: false },
     { type: 'separator' },
     {
       label: 'Open Gchat',
-      click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } },
+      click: async () => {
+        if (!mainWindow) return;
+        mainWindow.show();
+        mainWindow.focus();
+        if (!mainWindow.webContents.getURL()) {
+          await routeInitialView();
+        }
+      },
     },
     {
       label: 'Check for Updates',
@@ -200,25 +271,24 @@ function updateTrayMenu(unread = 0) {
     { type: 'separator' },
     {
       label: 'Quit',
-      click: () => { isQuitting = true; app.quit(); },
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
     },
   ]);
   tray.setContextMenu(contextMenu);
-  tray.setToolTip(unread > 0 ? `Gchat — ${unread} unread message${unread === 1 ? '' : 's'}` : 'Gchat ');
+  tray.setToolTip(unread > 0 ? `Gchat — ${unread} unread message${unread === 1 ? '' : 's'}` : 'Gchat');
 }
 
 // ── IPC handlers (renderer → main) ───────────────────────────────────────────
-
-// Renderer sends unread count whenever it changes
 ipcMain.on('set-unread-count', (_event, count) => {
   const n = Math.max(0, Number(count) || 0);
-  // Taskbar overlay badge
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setOverlayIcon(
       n > 0 ? createBadgeIcon(n) : null,
       n > 0 ? `${n} unread message${n === 1 ? '' : 's'}` : ''
     );
-    // Flash taskbar if window is not focused
     if (n > 0 && !mainWindow.isFocused()) {
       mainWindow.flashFrame(true);
     }
@@ -226,7 +296,6 @@ ipcMain.on('set-unread-count', (_event, count) => {
   updateTrayMenu(n);
 });
 
-// Renderer requests a native OS notification (for background/unfocused messages)
 ipcMain.on('show-notification', (_event, { title, body, groupId }) => {
   if (!Notification.isSupported()) return;
   const notif = new Notification({
@@ -239,50 +308,87 @@ ipcMain.on('show-notification', (_event, { title, body, groupId }) => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
-      // Tell the renderer to switch to the relevant group
       if (groupId) mainWindow.webContents.send('focus-group', groupId);
     }
   });
   notif.show();
 });
 
-// Renderer requests launch-at-startup toggle
 ipcMain.handle('get-launch-at-startup', async () => {
   const cfg = await getStore();
-  return cfg.get('launchAtStartup');
+  return !!cfg.get('launchAtStartup');
 });
 
 ipcMain.handle('set-launch-at-startup', async (_event, enabled) => {
   const cfg = await getStore();
-  cfg.set('launchAtStartup', enabled);
-  app.setLoginItemSettings({ openAtLogin: !!enabled });
-  return enabled;
+  const nextValue = !!enabled;
+  cfg.set('launchAtStartup', nextValue);
+  app.setLoginItemSettings({ openAtLogin: nextValue });
+  return nextValue;
 });
 
-// Renderer requests the current server URL
-ipcMain.handle('get-server-url', async () => {
+ipcMain.handle('get-desktop-bootstrap', async () => {
   const cfg = await getStore();
-  return cfg.get('serverUrl');
+  return {
+    serverUrl: OFFICIAL_SERVER_URL,
+    launchAtStartup: !!cfg.get('launchAtStartup'),
+    onboardingCompleted: !!cfg.get('onboardingCompleted'),
+  };
 });
 
-// Renderer requests changing the server URL
-ipcMain.handle('set-server-url', async (_event, url) => {
-  if (!url || typeof url !== 'string') return false;
-  const trimmed = url.trim();
-  // Basic sanity check — must be http(s)
-  if (!/^https?:\/\/.+/.test(trimmed)) return false;
+ipcMain.handle('check-server-connectivity', async () => {
+  let timeout = null;
+  try {
+    const controller = new AbortController();
+    timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(OFFICIAL_SERVER_URL + '/api/auth/csrf', {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    clearTimeout(timeout);
+    return {
+      ok: response.ok,
+      status: response.status,
+      url: OFFICIAL_SERVER_URL,
+      checkedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    if (timeout) clearTimeout(timeout);
+    return {
+      ok: false,
+      url: OFFICIAL_SERVER_URL,
+      error: error?.message || 'Unable to connect.',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+});
+
+ipcMain.handle('complete-onboarding', async (_event, payload = {}) => {
   const cfg = await getStore();
-  cfg.set('serverUrl', trimmed);
-  if (mainWindow) mainWindow.loadURL(trimmed);
+  const launchAtStartup = !!payload.launchAtStartup;
+  cfg.set('serverUrl', OFFICIAL_SERVER_URL);
+  cfg.set('launchAtStartup', launchAtStartup);
+  cfg.set('onboardingCompleted', true);
+  app.setLoginItemSettings({ openAtLogin: launchAtStartup });
+  await loadHostedApp();
+  return { success: true };
+});
+
+ipcMain.handle('retry-connection', async () => {
+  await loadHostedApp();
   return true;
 });
 
+ipcMain.handle('get-connection-context', async () => ({
+  serverUrl: OFFICIAL_SERVER_URL,
+  lastLoadError,
+}));
+
 // ── Badge icon helper ─────────────────────────────────────────────────────────
-// Creates a small 20×20 red circle with a number for the taskbar overlay icon.
 function createBadgeIcon(count) {
   const label = count > 99 ? '99+' : String(count);
   const size = 20;
-  // Build a minimal PNG data-URL via Canvas-like SVG → nativeImage
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
     <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="#e74c3c"/>
     <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
@@ -296,39 +402,39 @@ function createBadgeIcon(count) {
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = true;
 
   autoUpdater.on('update-available', (info) => {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Available',
-      message: `Gchat ${info.version} is available.`,
-      detail: 'Would you like to download and install it?',
-      buttons: ['Download', 'Later'],
+      message: `Gchat ${info.version} is downloading in the background.`,
+      detail: 'You will be prompted to restart once the update is ready.',
+      buttons: ['OK'],
       defaultId: 0,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.downloadUpdate();
-    });
+    }).catch(() => {});
   });
 
   autoUpdater.on('update-downloaded', () => {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Ready',
-      message: 'The update has been downloaded.',
-      detail: 'Restart Gchat to apply the update.',
+      message: 'The latest Gchat update is ready to install.',
+      detail: 'Restart Gchat to apply the update now or do it later.',
       buttons: ['Restart Now', 'Later'],
       defaultId: 0,
     }).then(({ response }) => {
-      if (response === 0) { isQuitting = true; autoUpdater.quitAndInstall(); }
-    });
+      if (response === 0) {
+        isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }
+    }).catch(() => {});
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[updater] error:', err.message);
   });
 
-  // Only check in packaged builds where GitHub release config is valid
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
   }
@@ -336,9 +442,9 @@ function setupAutoUpdater() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // Apply stored startup preference
   const cfg = await getStore();
-  app.setLoginItemSettings({ openAtLogin: cfg.get('launchAtStartup') });
+  cfg.set('serverUrl', OFFICIAL_SERVER_URL);
+  app.setLoginItemSettings({ openAtLogin: !!cfg.get('launchAtStartup') });
 
   await createWindow();
   await createTray();
@@ -346,17 +452,14 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS keep the app running in the tray even with no windows.
-  // On Windows / Linux quit if all windows are closed and not going to tray.
   if (process.platform !== 'darwin' && isQuitting) {
     app.quit();
   }
 });
 
-app.on('activate', () => {
-  // macOS: re-create window when dock icon is clicked
+app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    await createWindow();
   } else if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();

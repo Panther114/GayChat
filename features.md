@@ -142,10 +142,10 @@ This document tracks all implemented features in the Gchat application. All feat
 - [x] Notification click navigates to the relevant group
 - [x] Taskbar overlay badge with unread count
 - [x] Taskbar button flash on new messages when window is unfocused
-- [x] Auto-launch at system startup (configurable via `window.electronAPI.setLaunchAtStartup`)
-- [x] Auto-updater via electron-updater (GitHub Releases)
-- [x] Persistent config via electron-store (server URL, window size, startup preference)
-- [x] Configurable server URL (supports Railway or self-hosted deployments)
+- [x] Auto-launch at system startup (configurable in the first-run desktop wizard)
+- [x] Auto-updater via electron-updater (GitHub Releases, automatic background download)
+- [x] Persistent config via electron-store (locked server target, window size, startup preference, wizard completion)
+- [x] First-run Windows desktop setup wizard with locked Railway deployment URL
 - [x] Open external links in default browser (not inside Electron)
 - [x] Spellcheck in message input
 - [x] Windows NSIS installer and portable executable via electron-builder

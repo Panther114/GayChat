@@ -34,19 +34,17 @@
     "appId": "com.Gchat.app",
     "productName": "Gchat",
     "copyright": "Copyright © 2024 Gchat",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
     "files": [
       "electron/**/*",
+      "public/favicon.svg",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/icon.ico",
-        "to": "icon.ico"
-      }
     ],
     "win": {
       "target": [
@@ -59,14 +57,12 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
       "publisherName": "Gchat"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Gchat"

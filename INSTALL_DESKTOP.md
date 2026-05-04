@@ -1,34 +1,37 @@
-# Gchat Desktop — Installation Guide
+# Gchat Desktop — Windows Installation Guide
 
-Gchat Desktop is an Electron-based Windows (and cross-platform) desktop application that wraps the Gchat web app and adds native OS features: system tray, Windows Action Center notifications, taskbar badge, flash-on-message, and auto-launch at startup.
-
----
-
-## Prerequisites
-
-| Requirement | Version |
-|---|---|
-| Node.js | ≥ 18.0.0 |
-| npm | ≥ 9.0.0 |
-| Git | any recent version |
-| A running Gchat server | (Railway deployment or local `node server.js`) |
+Gchat Desktop is a Windows-focused Electron wrapper for the hosted Gchat web app. It keeps the same chat UI after setup, then adds desktop-native features such as system tray support, launch-at-startup, native notifications, unread badge overlays, and automatic GitHub-based updates.
 
 ---
 
-## Option A — Download a Pre-Built Installer (Recommended)
+## What the desktop app now does
+
+- Runs as a **Windows desktop app** with the same interface as the web version after setup
+- Opens a **first-run setup wizard** instead of asking users to run console commands
+- Stays **locked to the official Railway deployment**: `https://gchat.up.railway.app`
+- Requires an **online connection** at startup and during use
+- Can **optionally launch when Windows boots**
+- **Downloads updates automatically** from GitHub Releases and asks before restarting to install
+
+---
+
+## Option A — Download a packaged Windows build
 
 If a maintainer has published a release:
 
-1. Go to the **[Releases](../../releases)** page of this repository.
-2. Download the latest `Gchat-Setup-<version>.exe` (installer) or `Gchat-<version>-portable.exe` (no install needed).
-3. Run the installer / portable executable.
-4. On first launch, Gchat Desktop will connect to the configured server URL.
+1. Open the repository **[Releases](../../releases)** page.
+2. Download either:
+   - `Gchat Setup <version>.exe` for the normal Windows installer, or
+   - `Gchat <version>.exe` for the portable build.
+3. Run the file.
+4. On first launch, complete the built-in setup wizard.
+5. After setup finishes, the app opens the hosted Gchat sign-in page.
 
-> **Windows SmartScreen warning**: If you see a "Windows protected your PC" warning, click **More info → Run anyway**. This appears because the executable is not yet signed with a commercial code-signing certificate.
+> **Windows SmartScreen warning**: If Windows shows “Windows protected your PC”, click **More info → Run anyway**. This happens because the executable is not code-signed yet.
 
 ---
 
-## Option B — Build from Source
+## Option B — Build it yourself
 
 ### 1. Clone the repository
 
@@ -37,147 +40,124 @@ git clone https://github.com/Panther114/Gchat.git
 cd Gchat
 ```
 
-### 2. Install all dependencies (including devDependencies)
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-> **Note**: This installs `electron` and `electron-builder` which are listed as `devDependencies`. These are intentionally excluded from Railway server deployments via the `npm install --omit=dev` build command in `railway.json`.
-
-### 3. Run in development mode (no packaging)
+### 3. Launch the desktop app in development
 
 ```bash
-# Point the app at your local dev server (start the server first)
-node server.js &
-
-# Launch the desktop app
 npm run electron
 ```
 
-The app will open a native window loading `http://localhost:3000` by default. You can change the server URL from the app's settings (see [Changing the Server URL](#changing-the-server-url)).
+The desktop shell will show the first-run setup wizard, then connect to the hosted Railway deployment.
 
-### 4. Build a Windows installer
+### 4. Build the Windows packages
 
 ```bash
 npm run build:win
 ```
 
-This produces the following files in the `dist/` folder:
+This outputs Windows packages in `dist/`:
 
 | File | Description |
 |---|---|
-| `Gchat Setup <version>.exe` | NSIS installer — installs to Program Files |
-| `Gchat <version>.exe` | Portable executable — no installation needed |
-
-> **Icon**: Before building for distribution, place a multi-resolution Windows icon at `build/icon.ico` (recommended sizes: 16×16, 32×32, 48×48, 256×256). You can convert `public/favicon.svg` to `.ico` using tools like [CloudConvert](https://cloudconvert.com/svg-to-ico) or ImageMagick:
->
-> ```bash
-> convert -background transparent public/favicon.svg -define icon:auto-resize=256,48,32,16 build/icon.ico
-> ```
-
-### 5. Build for macOS / Linux (optional)
-
-```bash
-npm run build:mac    # Produces a .dmg for macOS
-npm run build:linux  # Produces .AppImage and .deb for Linux
-```
+| `Gchat Setup <version>.exe` | Windows installer |
+| `Gchat <version>.exe` | Portable build |
 
 ---
 
-## Changing the Server URL
+## First-run setup wizard
 
-By default the desktop app connects to the server URL stored in its local config (defaults to `https://Gchat.up.railway.app`). To point it at a different server:
+The first time Gchat Desktop launches, it walks the user through a guided setup flow:
 
-**Via the browser console (developer tools):**
+1. **Welcome + privacy summary** — explains encryption, hosted usage, and desktop behavior.
+2. **Connection check** — verifies that `https://gchat.up.railway.app` is reachable.
+3. **Notification permission** — prompts for native Windows alerts.
+4. **Startup preference** — lets the user choose whether Gchat launches when Windows boots.
+5. **Finish** — saves the desktop settings and opens the hosted sign-in page.
 
-1. Open DevTools: **Ctrl + Shift + I** (or **F12**).
-2. In the **Console** tab, run:
-
-```js
-await window.electronAPI.setServerUrl('https://your-server-url.example.com');
-```
-
-The window will reload and connect to the new URL. The setting is persisted across restarts.
+The wizard only has to be completed once per Windows user profile.
 
 ---
 
-## Auto-Launch at Startup
+## Server behavior
 
-To make Gchat Desktop start automatically when Windows starts:
+This desktop build is intentionally **not configurable** for self-hosting.
 
-1. Open DevTools (**Ctrl + Shift + I**) and run in the Console:
-
-```js
-await window.electronAPI.setLaunchAtStartup(true);
-// Returns: true
-```
-
-To disable:
-
-```js
-await window.electronAPI.setLaunchAtStartup(false);
-```
+- The app always targets: `https://gchat.up.railway.app`
+- The URL is locked so support and setup stay simple
+- There is **no offline mode** in the desktop shell
+- If the hosted app is unreachable, Gchat shows a retry screen until the connection returns
 
 ---
 
-## System Tray
+## Auto-launch at startup
 
-- Gchat Desktop minimises to the **system tray** (bottom-right corner of the taskbar) when you click the ✕ close button. The app keeps running in the background.
-- **Click** the tray icon to show/hide the main window.
-- **Right-click** the tray icon for the context menu: Open, Check for Updates, Quit.
-- When there are unread messages, the tray tooltip shows the unread count.
+The first-run wizard includes a **Launch Gchat at startup** choice.
+
+- If enabled, Gchat starts with Windows and restores the desktop shell.
+- If disabled, users can still launch it manually whenever they want.
+
+The chosen value is saved in the local Electron config under `%APPDATA%\Gchat\config.json`.
 
 ---
 
 ## Notifications
 
-- Gchat Desktop sends **native Windows notifications** (visible in the Action Center) when a new message arrives while the window is hidden or not in focus.
-- Clicking a notification brings the window to the front and navigates to the relevant group.
-- The **taskbar icon** shows a red badge overlay with the unread count.
-- The taskbar button **flashes** when a new message arrives while the window is in the background.
+If notifications are allowed during setup:
 
-### Granting notification permission (first run)
+- new messages can trigger **native Windows notifications**
+- clicking a notification brings Gchat to the front
+- the taskbar overlay badge and tray state stay aligned with unread activity
 
-On first launch, the browser engine inside Electron will prompt for notification permission. Click **Allow** to enable native notifications.
+If notifications are denied, the app still works, but native desktop alerts stay disabled until Windows permission settings are changed.
+
+---
+
+## System tray behavior
+
+- Closing the main window hides Gchat to the **system tray** instead of exiting.
+- Clicking the tray icon shows or hides the app.
+- Right-clicking the tray icon opens the tray menu: **Open**, **Check for Updates**, **Quit**.
 
 ---
 
 ## Updating
 
-When a new version is available (requires GitHub Releases to be configured):
+When a newer GitHub Release is available:
 
-1. A dialog will appear: **"Gchat X.Y.Z is available."**
-2. Click **Download** to download the update in the background.
-3. When the download completes, click **Restart Now** to apply it.
+1. Gchat detects it automatically.
+2. The update downloads in the background.
+3. When the download is ready, Gchat prompts the user to restart and install it.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Solution |
+| Problem | What to do |
 |---|---|
-| Blank white screen on launch | Check that the server URL is correct and the server is running. |
-| Notifications not appearing | Open DevTools console and check for `Notification.permission`. Run `Notification.requestPermission()` manually if it shows `"denied"`. On Windows 11, also check **Settings → System → Notifications** and ensure Gchat is allowed. |
-| `npm run build:win` fails with "icon not found" | Create `build/icon.ico` as described in the [Build section](#4-build-a-windows-installer). |
-| `ELECTRON_SKIP_BINARY_DOWNLOAD` warning in CI | This is expected on Railway where Electron is not installed. The `npm install --omit=dev` command in `railway.json` prevents Electron from being downloaded on the server. |
-| App opens a second window on launch | The single-instance lock should prevent this. If it persists, delete `%APPDATA%\Gchat\` and relaunch. |
+| The setup wizard will not continue past the connection step | Confirm the internet connection is working and `https://gchat.up.railway.app` is reachable. |
+| Gchat opens a recovery screen instead of the sign-in page | The hosted Railway app could not be reached. Use the retry button after the connection improves. |
+| Notifications do not appear | Check Windows notification settings and confirm the permission was allowed during setup. |
+| A second app window appears | Gchat uses a single-instance lock. If this still happens, remove `%APPDATA%\Gchat\` and relaunch. |
 
 ---
 
-## File Locations (Windows)
+## File locations (Windows)
 
 | Purpose | Path |
 |---|---|
-| App config (server URL, startup pref) | `%APPDATA%\Gchat\config.json` |
-| App logs | `%APPDATA%\Gchat\logs\` |
+| Desktop config (wizard completion, startup choice) | `%APPDATA%\Gchat\config.json` |
 | Electron user data | `%APPDATA%\Gchat\` |
 
 ---
 
-## Security Notes
+## Security notes
 
-- The desktop app uses `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true` — the web content cannot access Node.js APIs directly.
-- External links (e.g., URLs in messages) are opened in your default browser, not inside Electron.
-- The preload script (`electron/preload.js`) exposes only a narrow `window.electronAPI` surface via `contextBridge`.
-- For production distribution, sign the executable with a code-signing certificate to avoid Windows SmartScreen warnings.
+- The desktop app keeps `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`.
+- External links still open in the default browser instead of inside Electron.
+- The local wizard stores only desktop shell preferences; chat authentication still happens on the hosted app after setup.
+- Group encryption keys remain client-side and are not handled by the desktop wrapper.
