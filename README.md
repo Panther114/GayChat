@@ -145,7 +145,7 @@ Gchat can be packaged as a native Windows desktop app using Electron. The deskto
 
 ```bash
 # Install all dependencies (including devDependencies for Electron)
-npm install
+npm install --include=dev
 
 # Launch the desktop app shell
 npm run electron
@@ -161,6 +161,8 @@ npm run build:win
 
 See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full Windows guide, including the setup wizard flow, startup behavior, online-only recovery screen, notification permissions, and troubleshooting.
 
+> If `npm run build:win` says `'electron-builder' is not recognized`, your install likely skipped `devDependencies`. Run `npm install --include=dev` in the repo root and retry.
+
 > **Railway note**: The `railway.json` build command is set to `npm install --omit=dev`, so `electron` and `electron-builder` are never installed on the Railway server — they are `devDependencies` only and do not affect the web deployment.
 
 ---
@@ -169,7 +171,7 @@ See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full Windows guide, inc
 
 ```bash
 # Install dependencies
-npm install
+npm install --include=dev
 
 # Start the server (runs on http://localhost:3000)
 node server.js
