@@ -20,10 +20,8 @@ Gchat Desktop is a Windows-focused Electron wrapper for the hosted Gchat web app
 If a maintainer has published a release:
 
 1. Open the repository **[Releases](../../releases)** page.
-2. Download either:
-   - `Gchat Setup <version>.exe` for the normal Windows installer, or
-   - `Gchat <version>.exe` for the portable build.
-3. Run the file.
+2. Download **`Gchat Setup <version>.exe`**.
+3. Double-click the installer.
 4. On first launch, complete the built-in setup wizard.
 5. After setup finishes, the app opens the hosted Gchat sign-in page.
 
@@ -43,6 +41,7 @@ cd Gchat
 ### 2. Install dependencies
 
 ```bash
+# Use Node 20 for Windows desktop packaging
 npm install --include=dev
 ```
 
