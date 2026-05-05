@@ -24,7 +24,7 @@ jobs:
         run: npm install --include=dev
 
       - name: Build Windows desktop packages
-        run: npm run build:win
+        run: npm run build:win -- --publish never
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
