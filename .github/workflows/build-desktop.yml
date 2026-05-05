@@ -1,0 +1,33 @@
+name: Build Windows desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-windows-desktop:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --include=dev
+
+      - name: Build Windows desktop packages
+        run: npm run build:win
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gchat-windows-desktop
+          path: |
+            dist/*.exe
+            dist/*.yml

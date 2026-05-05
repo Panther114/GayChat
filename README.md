@@ -153,7 +153,10 @@ npm run electron
 
 ### Build Windows packages
 
+For normal Windows installs, just download **`Gchat Setup <version>.exe`** from Releases and double-click it.
+
 ```bash
+# Use Node 20 for Windows packaging to avoid native module install/rebuild issues
 npm run build:win
 # Output: dist/Gchat Setup <version>.exe  (installer)
 #         dist/Gchat <version>.exe         (portable)
@@ -162,6 +165,8 @@ npm run build:win
 See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full Windows guide, including the setup wizard flow, startup behavior, online-only recovery screen, notification permissions, and troubleshooting.
 
 > If `npm run build:win` says `'electron-builder' is not recognized`, your install likely skipped `devDependencies`. Run `npm install --include=dev` in the repo root and retry.
+
+> **Maintainer note**: Build Windows packages with Node 20. The repository includes a Windows GitHub Actions workflow that installs with Node 20, runs `npm run build:win`, and uploads the generated `.exe` and `.yml` files.
 
 > **Railway note**: The `railway.json` build command is set to `npm install --omit=dev`, so `electron` and `electron-builder` are never installed on the Railway server — they are `devDependencies` only and do not affect the web deployment.
 
