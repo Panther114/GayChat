@@ -298,13 +298,10 @@ body.chat-body {
 
 .group-item-badge {
   background: var(--red);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  min-width: 18px; height: 18px;
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: block;
   flex-shrink: 0;
 }
 
@@ -641,8 +638,12 @@ body.chat-body {
 .msg-edit-save:disabled { opacity: .5; cursor: not-allowed; }
 .msg-edit-cancel { background: rgba(255,255,255,.1); color: var(--text-primary); }
 
-/* Unread indicator */
-.msg-row.unread .msg-bubble { border-left: 3px solid var(--red); }
+/* Unseen indicator */
+.msg-row.unseen .msg-bubble {
+  background: #ffe9f3;
+  border-color: #f8bfd9;
+  transition: background .2s ease, border-color .2s ease;
+}
 
 /* Search highlight */
 .search-highlight { background: rgba(255,200,0,.3); border-radius: 2px; }
@@ -721,6 +722,39 @@ body.chat-body {
   padding: 10px 12px;
   background: rgba(15,15,26,.9);
   border-top: 1px solid #1a1a2e;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-progress-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255,255,255,.08);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.upload-progress-bar {
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform .12s linear;
+}
+
+.upload-progress-track.indeterminate .upload-progress-bar {
+  width: 38%;
+  transform: translateX(-120%);
+  animation: uploadIndeterminate 1s linear infinite;
+}
+
+@keyframes uploadIndeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
 }
 
 .message-input-bar textarea {
