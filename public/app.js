@@ -229,22 +229,44 @@ function canTrackMessageRead(msg) {
     msg &&
     currentUser &&
     msg.groupId === currentGroupId &&
-    msg.senderId !== currentUser.id
+    msg.senderId !== currentUser.id &&
+    msg.hasRead !== true
   );
 }
 
 function ensureReadObserver() {
   if (readObserver) return;
   readObserver = new IntersectionObserver((entries) => {
-    if (!socket || !currentGroupId || document.visibilityState !== 'visible' || !document.hasFocus()) return;
     for (const entry of entries) {
       if (!entry.isIntersecting || entry.intersectionRatio < 0.75) continue;
+      if (!socket || !currentGroupId || document.visibilityState !== 'visible' || !document.hasFocus()) continue;
       const row = entry.target;
       const messageId = row?.dataset?.msgId;
-      if (!messageId || pendingReadMessageIds.has(messageId)) continue;
-      pendingReadMessageIds.add(messageId);
-      readObserver.unobserve(row);
-      socket.emit('mark_message_read', { groupId: currentGroupId, messageId });
+      if (!messageId || pendingReadMessageIds.has(messageId) || pendingReadTimers.has(messageId)) continue;
+      const timer = setTimeout(() => {
+        pendingReadTimers.delete(messageId);
+        if (!row?.isConnected) return;
+        pendingReadMessageIds.add(messageId);
+        row.classList.remove('unseen');
+        row.dataset.hasRead = '1';
+        if (currentGroupId) {
+          unreadCounts[currentGroupId] = Math.max(0, (unreadCounts[currentGroupId] || 0) - 1);
+          updateUnreadBadge(currentGroupId, unreadCounts[currentGroupId]);
+        }
+        readObserver.unobserve(row);
+        socket.emit('mark_message_read', { groupId: currentGroupId, messageId });
+      }, 1000);
+      pendingReadTimers.set(messageId, timer);
+    }
+    for (const entry of entries) {
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.75) continue;
+      const row = entry.target;
+      const messageId = row?.dataset?.msgId;
+      if (!messageId) continue;
+      const timer = pendingReadTimers.get(messageId);
+      if (!timer) continue;
+      clearTimeout(timer);
+      pendingReadTimers.delete(messageId);
     }
   }, {
     root: messagesArea(),
@@ -264,11 +286,17 @@ function observeCurrentGroupRowsForRead() {
   const rows = area.querySelectorAll('.msg-row[data-msg-id]');
   for (const row of rows) {
     if (row.dataset.senderId === currentUser.id) continue;
-    observeMessageForRead(row, { groupId: currentGroupId, senderId: row.dataset.senderId });
+    observeMessageForRead(row, {
+      groupId: currentGroupId,
+      senderId: row.dataset.senderId,
+      hasRead: row.dataset.hasRead === '1',
+    });
   }
 }
 
 function resetReadTracking() {
+  for (const timer of pendingReadTimers.values()) clearTimeout(timer);
+  pendingReadTimers = new Map();
   pendingReadMessageIds = new Set();
   if (readObserver) {
     readObserver.disconnect();
@@ -428,8 +456,10 @@ let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
 let readObserver = null;
 let pendingReadMessageIds = new Set();
+let pendingReadTimers = new Map();
 const groupDataCache = new Map();
 const groupPreloadPromises = new Map();
+let activeUploadToken = 0;
 
 function renderCurrentUserAvatar(user = currentUser) {
   const avatar = $('user-avatar');
@@ -902,7 +932,7 @@ function buildGroupItem(g) {
   badge.className = 'group-item-badge';
   badge.id = 'badge-' + g.id;
   const cnt = unreadCounts[g.id] || 0;
-  badge.textContent = cnt;
+  badge.textContent = '';
   badge.hidden = cnt === 0;
 
   item.append(av, info, badge);
@@ -971,11 +1001,51 @@ function updateGroupPreview(groupId, text, time) {
   if (g) g._lastPreview = (time ? formatTime(time) + ' ' : '') + truncate(text, 35);
 }
 
+async function getMessagePreviewText(msg, groupId = msg.groupId) {
+  if (!msg) return '';
+  if (msg.type === 'image') return '[Image]';
+  if (msg.type === 'file') return '[File: ' + (msg.filename || '') + ']';
+  if (msg.type === 'whisper') return '[Whisper]';
+  const key = getGroupKey(groupId);
+  if (!key || msg.type !== 'text') return '[encrypted]';
+  const plaintext = await decryptMessage(msg.encryptedContent, msg.iv, key, groupId);
+  return plaintext || '[encrypted]';
+}
+
+async function updateGroupPreviewFromMessage(groupId, msg) {
+  if (!msg) {
+    updateGroupPreview(groupId, '', null);
+    return;
+  }
+  const preview = await getMessagePreviewText(msg, groupId);
+  updateGroupPreview(groupId, preview, msg.createdAt);
+}
+
+function applyCurrentUserReadState(msg) {
+  if (!msg) return;
+  if (msg.senderId === currentUser.id) {
+    msg.hasRead = true;
+    return;
+  }
+  if (typeof msg.hasRead !== 'boolean') {
+    msg.hasRead = false;
+  }
+}
+
 function updateUnreadBadge(groupId, count) {
   const badge = $('badge-' + groupId);
   if (!badge) return;
-  badge.textContent = count;
+  badge.textContent = '';
   badge.hidden = count === 0;
+}
+
+function updateGroupUnseenCount(groupId, messages = []) {
+  const unseen = (messages || []).reduce((acc, msg) => {
+    if (!msg || msg.senderId === currentUser?.id) return acc;
+    return acc + (msg.hasRead === true ? 0 : 1);
+  }, 0);
+  unreadCounts[groupId] = unseen;
+  updateUnreadBadge(groupId, unseen);
 }
 
 // ── Select group ──────────────────────────────────────────────────────────────
@@ -988,9 +1058,6 @@ async function selectGroup(groupId) {
   updateWhisperBtn();
   resetReadTracking();
 
-  // Reset unread for this group
-  unreadCounts[groupId] = 0;
-  updateUnreadBadge(groupId, 0);
   scrollUnreadCount = 0;
   updateScrollBadge();
 
@@ -1040,7 +1107,10 @@ async function selectGroup(groupId) {
     if (currentGroupId !== groupId) return;
   }
   renderGroupFromCache(groupId);
+  updateGroupUnseenCount(groupId, allMessages);
   observeCurrentGroupRowsForRead();
+  scrollToBottom(true);
+  $('scroll-bottom-btn').hidden = true;
 
   // Close mobile panels
   if (isMobileLayout()) closeMobilePanels();
@@ -1076,6 +1146,8 @@ async function loadMessages(groupId, before) {
       cache.messageRows = await buildMessageRows(msgs, groupId);
       cache.oldestMessageId = msgs.length > 0 ? msgs[0].id : null;
       cache.rowsDirty = false;
+      updateGroupUnseenCount(groupId, msgs);
+      await updateGroupPreviewFromMessage(groupId, msgs.length ? msgs[msgs.length - 1] : null);
     } else {
       // Prepend older messages
       const area = messagesArea();
@@ -1192,6 +1264,7 @@ function renderWhisperPicker() {
 async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, options = {}) {
   const isOwn = msg.senderId === currentUser.id;
   const showSenderName = options.showSenderName !== false;
+  const isReadByMe = isOwn || msg.hasRead === true;
 
   // System message
   if (msg.type === 'system') {
@@ -1215,6 +1288,8 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, opt
   row.className = 'msg-row' + (isOwn ? ' own' : '') + (msg.type === 'whisper' ? ' whisper' : '');
   row.dataset.msgId = msg.id;
   row.dataset.senderId = msg.senderId;
+  row.dataset.hasRead = isReadByMe ? '1' : '0';
+  if (!isReadByMe) row.classList.add('unseen');
 
   const av = document.createElement('div');
   av.className = 'msg-avatar';
@@ -1430,6 +1505,10 @@ async function appendMessageBubble(msg, scroll, groupId = currentGroupId) {
 
   // Scroll behavior
   if (scroll !== false) {
+    if (msg.senderId === currentUser.id) {
+      scrollToBottom(true);
+      return row;
+    }
     const isAtBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
     if (isAtBottom) {
       scrollToBottom();
@@ -1438,7 +1517,6 @@ async function appendMessageBubble(msg, scroll, groupId = currentGroupId) {
       scrollUnreadCount++;
       updateScrollBadge();
       if (msg.senderId !== currentUser.id) playNotifSound();
-      row.classList.add('unread');
     }
   }
   return row;
@@ -1674,6 +1752,7 @@ async function doSend(text) {
     const inp = $('message-input');
     inp.value = '';
     autoResizeTextarea(inp);
+    scrollToBottom(true);
   } catch(err) {
     console.error('Encryption failed:', err);
     showToast('Failed to send message', 'error');
@@ -1698,10 +1777,76 @@ function showToast(msg, type = 'info') {
 }
 
 // ── File / Image upload ───────────────────────────────────────────────────────
+function beginUploadProgress() {
+  activeUploadToken += 1;
+  const token = activeUploadToken;
+  const track = $('upload-progress-track');
+  const bar = $('upload-progress-bar');
+  if (!track || !bar) return token;
+  track.hidden = false;
+  track.classList.add('indeterminate');
+  bar.style.transform = 'scaleX(0)';
+  return token;
+}
+
+function setUploadProgress(token, value) {
+  if (token !== activeUploadToken) return;
+  const track = $('upload-progress-track');
+  const bar = $('upload-progress-bar');
+  if (!track || !bar) return;
+  const clamped = Math.max(0, Math.min(1, Number(value) || 0));
+  track.hidden = false;
+  track.classList.remove('indeterminate');
+  bar.style.transform = `scaleX(${clamped})`;
+}
+
+function endUploadProgress(token, ok) {
+  if (token !== activeUploadToken) return;
+  const track = $('upload-progress-track');
+  const bar = $('upload-progress-bar');
+  if (!track || !bar) return;
+  if (ok) {
+    track.classList.remove('indeterminate');
+    bar.style.transform = 'scaleX(1)';
+  }
+  setTimeout(() => {
+    if (token !== activeUploadToken) return;
+    track.hidden = true;
+    track.classList.remove('indeterminate');
+    bar.style.transform = 'scaleX(0)';
+  }, ok ? 240 : 0);
+}
+
+function uploadEncryptedAttachment(groupId, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/groups/${groupId}/upload`);
+    const headers = apiHeaders();
+    for (const [key, val] of Object.entries(headers)) xhr.setRequestHeader(key, val);
+    xhr.upload.onprogress = (evt) => {
+      if (!evt.lengthComputable || typeof onProgress !== 'function') return;
+      onProgress(evt.loaded / evt.total);
+    };
+    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.onload = () => {
+      const raw = xhr.responseText || '{}';
+      let data = {};
+      try { data = JSON.parse(raw); } catch { /* ignore parse errors */ }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    };
+    xhr.send(JSON.stringify(body));
+  });
+}
+
 async function handleFileUpload(file) {
   if (!currentGroupId || !socket) return;
+  const uploadToken = beginUploadProgress();
   const key = getGroupKey(currentGroupId);
-  if (!key) { showToast('Set group key first', 'error'); return; }
+  if (!key) {
+    endUploadProgress(uploadToken, false);
+    showToast('Set group key first', 'error');
+    return;
+  }
 
   const MAX_RAW = 25 * 1024 * 1024 * 1024; // 25GB
 
@@ -1711,33 +1856,40 @@ async function handleFileUpload(file) {
   if (isImage) {
     processedFile = await compressImage(file);
     if (processedFile.size > MAX_RAW) {
+      endUploadProgress(uploadToken, false);
       showToast('Image too large (max 25GB after compression)', 'error');
       return;
     }
   } else {
     if (file.size > MAX_RAW) {
+      endUploadProgress(uploadToken, false);
       showToast('File too large (max 25GB)', 'error');
       return;
     }
   }
 
   try {
+    setUploadProgress(uploadToken, 0.25);
     const buffer = await processedFile.arrayBuffer();
+    setUploadProgress(uploadToken, 0.5);
     const { encryptedContent, iv } = await encryptBytes(buffer, key, currentGroupId);
+    setUploadProgress(uploadToken, 0.6);
 
     const body = { encryptedContent, iv, type: isImage ? 'image' : 'file', filename: file.name };
-    const res = await fetch(`/api/groups/${currentGroupId}/upload`, {
-      method: 'POST',
-      headers: apiHeaders(),
-      body: JSON.stringify(body),
+    const res = await uploadEncryptedAttachment(currentGroupId, body, (ratio) => {
+      setUploadProgress(uploadToken, 0.6 + ratio * 0.4);
     });
 
     if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
+      endUploadProgress(uploadToken, false);
+      const d = res.data || {};
       showToast(d.error || 'Upload failed', 'error');
+      return;
     }
+    endUploadProgress(uploadToken, true);
   } catch(err) {
     console.error('File upload error:', err);
+    endUploadProgress(uploadToken, false);
     showToast('Upload failed', 'error');
   }
 }
@@ -1772,6 +1924,7 @@ function initSocket() {
     }
 
     if (msg.groupId !== currentGroupId) {
+      applyCurrentUserReadState(msg);
       const cache = ensureGroupCacheEntry(msg.groupId);
       if (cache.messages) {
         cache.messages.push(msg);
@@ -1787,19 +1940,14 @@ function initSocket() {
           cache.messageRows.push(row);
         }
       }
-      // Increment unread for non-active group
-      unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
-      updateUnreadBadge(msg.groupId, unreadCounts[msg.groupId]);
-      playNotifSound();
+      // Increment unseen for non-active group (only messages from others)
+      if (msg.senderId !== currentUser.id) {
+        unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
+        updateUnreadBadge(msg.groupId, unreadCounts[msg.groupId]);
+        playNotifSound();
+      }
       // Update last message preview
-      const key = getGroupKey(msg.groupId);
-      let preview = '[encrypted]';
-      if (key && msg.type === 'text') {
-        const pt = await decryptMessage(msg.encryptedContent, msg.iv, key, msg.groupId);
-        if (pt) preview = pt;
-      } else if (msg.type === 'image') preview = '[Image]';
-      else if (msg.type === 'file') preview = '[File: ' + (msg.filename || '') + ']';
-      else if (msg.type === 'whisper') preview = '[Whisper]';
+      const preview = await getMessagePreviewText(msg, msg.groupId);
       updateGroupPreview(msg.groupId, preview, msg.createdAt);
       // Send native OS notification when a message arrives in a background group
       if (msg.senderId !== currentUser.id) {
@@ -1813,16 +1961,14 @@ function initSocket() {
       }
       return;
     }
+    applyCurrentUserReadState(msg);
+    if (msg.senderId !== currentUser.id) {
+      unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
+      updateUnreadBadge(msg.groupId, unreadCounts[msg.groupId]);
+    }
     await appendMessageBubble(msg, true, msg.groupId);
     // Update preview
-    const key2 = getGroupKey(msg.groupId);
-    let preview2 = '[encrypted]';
-    if (key2 && msg.type === 'text') {
-      const pt2 = await decryptMessage(msg.encryptedContent, msg.iv, key2, msg.groupId);
-      if (pt2) preview2 = pt2;
-    } else if (msg.type === 'image') preview2 = '[Image]';
-    else if (msg.type === 'file') preview2 = '[File: ' + (msg.filename || '') + ']';
-    else if (msg.type === 'whisper') preview2 = '[Whisper]';
+    const preview2 = await getMessagePreviewText(msg, msg.groupId);
     updateGroupPreview(msg.groupId, preview2, msg.createdAt);
     // Send native OS notification when the window is not focused (active group)
     if (!document.hasFocus() && msg.senderId !== currentUser.id) {
@@ -2741,12 +2887,12 @@ function setupEventListeners() {
     if (file) { handleFileUpload(file); e.target.value = ''; }
   });
 
-  // Paste image
+  // Paste files from clipboard
   msgInput.addEventListener('paste', async (e) => {
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
     for (const item of items) {
-      if (item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         e.preventDefault();
         const file = item.getAsFile();
         if (file) await handleFileUpload(file);
@@ -2778,8 +2924,6 @@ function setupEventListeners() {
     if (isAtBottom) {
       scrollUnreadCount = 0;
       $('scroll-unread-badge').hidden = true;
-      // Clear unread marks
-      area.querySelectorAll('.msg-row.unread').forEach(r => r.classList.remove('unread'));
     }
     // Infinite scroll up
     if (area.scrollTop <= SCROLL_LOAD_THRESHOLD && !loadingOlder && oldestMessageId) {
@@ -2809,7 +2953,7 @@ function setupEventListeners() {
 
   // Unread jump button
   $('unread-jump-btn').addEventListener('click', () => {
-    const first = messagesArea().querySelector('.msg-row.unread');
+    const first = messagesArea().querySelector('.msg-row.unseen');
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 

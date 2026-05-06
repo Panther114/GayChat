@@ -229,8 +229,13 @@ const stmts = {
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
            m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at,
-           m.total_recipients,
-           (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count
+            m.total_recipients,
+            (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count,
+            EXISTS(
+              SELECT 1
+              FROM message_reads mr2
+              WHERE mr2.message_id = m.id AND mr2.user_id = ?
+            ) AS has_read
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     WHERE m.group_id = ?
@@ -242,8 +247,13 @@ const stmts = {
     SELECT m.id, m.group_id, m.sender_id, u.username AS sender_name,
            u.icon_color AS sender_color, m.encrypted_content, m.iv,
            m.type, m.reply_to, m.filename, m.whisper_to, m.created_at, m.edited_at,
-           m.total_recipients,
-           (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count
+            m.total_recipients,
+            (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) AS read_count,
+            EXISTS(
+              SELECT 1
+              FROM message_reads mr2
+              WHERE mr2.message_id = m.id AND mr2.user_id = ?
+            ) AS has_read
     FROM messages m
     JOIN users u ON m.sender_id = u.id
     CROSS JOIN ref
@@ -375,6 +385,7 @@ function formatMessage(m) {
     editedAt: m.edited_at || null,
     totalRecipients: Math.max(0, Number(m.total_recipients) || 0),
     readCount: Math.max(0, Number(m.read_count) || 0),
+    hasRead: !!m.has_read,
   };
 }
 
@@ -754,10 +765,10 @@ app.get('/api/groups/:groupId/messages', (req, res) => {
 
   let rows;
   if (before) {
-    // CTE parameter order: (refMessageId, groupId, limit)
-    rows = stmts.getMessagesBefore.all(before, groupId, limit).reverse();
+    // CTE parameter order: (beforeMessageId, userId, groupId, limit)
+    rows = stmts.getMessagesBefore.all(before, userId, groupId, limit).reverse();
   } else {
-    rows = stmts.getLastMessages.all(groupId, limit).reverse();
+    rows = stmts.getLastMessages.all(userId, groupId, limit).reverse();
   }
 
   res.json(rows.map(formatMessage));
