@@ -141,19 +141,19 @@ Gchat can be packaged as a native Windows desktop app using Electron. The deskto
 - 🚀 **Auto-launch choice** — optionally start with Windows after setup
 - 🔄 **Auto-update** — downloads updates automatically from GitHub Releases
 
-### Quick start (development)
+### Quick start
 
 ```bash
-# Install all dependencies (including devDependencies for Electron)
+# Install all dependencies (including Electron devDependencies)
 npm install --include=dev
 
-# Launch the desktop app shell
+# Launch the desktop app
 npm run electron
 ```
 
-### Build Windows packages
+### Build Windows package
 
-For normal Windows installs, just download **`Gchat Setup <version>.exe`** from Releases and double-click it.
+For a normal Windows install, download **`Gchat Setup <version>.exe`** from Releases and double-click it.
 
 ```bash
 # Use Node 20 for Windows packaging to avoid native module install/rebuild issues
@@ -162,7 +162,7 @@ npm run build:win
 #         dist/Gchat <version>.exe         (portable)
 ```
 
-See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the full Windows guide, including the setup wizard flow, startup behavior, online-only recovery screen, notification permissions, and troubleshooting.
+See **[INSTALL_DESKTOP.md](INSTALL_DESKTOP.md)** for the direct Windows setup guide, troubleshooting, and desktop behavior notes.
 
 > If `npm run build:win` says `'electron-builder' is not recognized`, your install likely skipped `devDependencies`. Run `npm install --include=dev` in the repo root and retry.
 

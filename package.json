@@ -1,6 +1,6 @@
 {
   "name": "Gchat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "End-to-end encrypted group chat app",
   "main": "server.js",
   "scripts": {
@@ -37,6 +37,8 @@
     "appId": "com.Gchat.app",
     "productName": "Gchat",
     "copyright": "Copyright © 2024 Gchat",
+    "asar": true,
+    "compression": "maximum",
     "extraMetadata": {
       "main": "electron/main.js"
     },
@@ -46,10 +48,12 @@
     },
     "files": [
       "electron/**/*",
-      "public/favicon.svg",
-      "package.json"
+      "public/gchat_icon.png",
+      "package.json",
+      "!node_modules/{bcrypt,better-sqlite3,connect-sqlite3,express,express-session,socket.io,uuid}/**"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -87,6 +91,7 @@
         "deb"
       ],
       "icon": "build/icons",
+      "maintainer": "Gchat",
       "category": "Network"
     },
     "publish": {

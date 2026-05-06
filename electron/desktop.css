@@ -71,8 +71,18 @@ input {
   height: 56px;
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(85, 163, 255, 0.24), rgba(168, 85, 247, 0.24));
-  font-size: 28px;
   margin-bottom: 18px;
+}
+
+.brand-mark-image {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+}
+
+.brand-mark-large {
+  margin-bottom: 24px;
 }
 
 .brand-title {

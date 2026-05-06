@@ -268,7 +268,7 @@ function sendNativeNotification(title, body, groupId) {
   // In a plain browser fall back to the Web Notification API.
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const n = new Notification(title, { body, icon: '/favicon.svg', tag: groupId });
+      const n = new Notification(title, { body, icon: '/gchat_icon.png', tag: groupId });
       n.addEventListener('click', () => { window.focus(); });
     } catch { /* notifications not supported */ }
   }

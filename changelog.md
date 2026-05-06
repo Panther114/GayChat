@@ -4,6 +4,16 @@ This document tracks all changes to the Gchat project in a PR-based format.
 
 ---
 
+## v1.0.1
+
+- Added the new `gchat_icon.png` branding to the login page, browser favicon, desktop runtime icon, and packaged desktop icon assets.
+- Added a **Remember me** option so sign-in only persists across restarts when the user explicitly chooses it.
+- Simplified the desktop onboarding copy and Windows setup documentation.
+- Reduced packaged desktop size by enabling maximum compression and excluding server-only runtime dependencies from the Electron bundle.
+- Bumped the app version to **1.0.1**.
+
+---
+
 ## PR #14 — Electron desktop app (Windows/macOS/Linux)
 
 **What changed**

@@ -6,6 +6,4 @@ node_modules/
 
 # Electron build output
 dist/
-build/icon.ico
 build/icon.icns
-build/icons/

@@ -10,54 +10,56 @@
   <div class="desktop-shell">
     <div class="desktop-card wizard-layout">
       <aside class="wizard-sidebar">
-        <div class="brand-mark">💬</div>
+        <div class="brand-mark">
+          <img class="brand-mark-image" src="../public/gchat_icon.png" alt="Gchat logo" />
+        </div>
         <h1 class="brand-title">Gchat</h1>
-        <p class="brand-subtitle">Windows desktop setup for the hosted Railway app. No command prompt steps required.</p>
+        <p class="brand-subtitle">A short setup for the hosted Gchat desktop app.</p>
         <ol class="step-list" id="step-list">
-          <li class="step-item active" data-step="0"><span class="step-index">1</span><div class="step-copy"><strong>Welcome</strong><span>What the app does and how privacy works</span></div></li>
-          <li class="step-item" data-step="1"><span class="step-index">2</span><div class="step-copy"><strong>Connection</strong><span>Confirm the hosted app is reachable</span></div></li>
-          <li class="step-item" data-step="2"><span class="step-index">3</span><div class="step-copy"><strong>Notifications</strong><span>Grant native message alerts</span></div></li>
-          <li class="step-item" data-step="3"><span class="step-index">4</span><div class="step-copy"><strong>Startup</strong><span>Choose whether Gchat launches on boot</span></div></li>
-          <li class="step-item" data-step="4"><span class="step-index">5</span><div class="step-copy"><strong>Finish</strong><span>Save and open the sign-in screen</span></div></li>
+          <li class="step-item active" data-step="0"><span class="step-index">1</span><div class="step-copy"><strong>Welcome</strong><span>See what this desktop app adds</span></div></li>
+          <li class="step-item" data-step="1"><span class="step-index">2</span><div class="step-copy"><strong>Connection</strong><span>Confirm the hosted service is online</span></div></li>
+          <li class="step-item" data-step="2"><span class="step-index">3</span><div class="step-copy"><strong>Notifications</strong><span>Allow native message alerts</span></div></li>
+          <li class="step-item" data-step="3"><span class="step-index">4</span><div class="step-copy"><strong>Startup</strong><span>Choose whether Gchat opens with Windows</span></div></li>
+          <li class="step-item" data-step="4"><span class="step-index">5</span><div class="step-copy"><strong>Finish</strong><span>Save your choices and open sign in</span></div></li>
         </ol>
       </aside>
 
       <main class="wizard-content">
         <section class="step-panel active" data-step="0">
           <span class="step-eyebrow">Desktop onboarding</span>
-          <h2 class="step-title">Set up Gchat once, then sign in like the web app.</h2>
-          <p class="step-description">This desktop app wraps the same Gchat interface you already have on the web, then adds Windows features like tray behavior, launch-at-startup, native notifications, and automatic GitHub-based updates.</p>
+          <h2 class="step-title">Set up Gchat once, then sign in normally.</h2>
+          <p class="step-description">The desktop app opens the same hosted Gchat service and adds a few Windows-only conveniences.</p>
           <div class="info-grid">
             <article class="info-card">
-              <h3>End-to-end encrypted groups</h3>
-              <p>Messages are encrypted in the client before they are sent. Group keys stay on your device and are not stored or transmitted by the server.</p>
+              <h3>Same hosted app</h3>
+              <p>You will use the official Railway deployment, not a separate local server.</p>
             </article>
             <article class="info-card">
-              <h3>Hosted online service</h3>
-              <p>This desktop build is locked to the Railway deployment and requires an internet connection. When connection quality is poor, the app keeps showing status instead of entering an offline mode.</p>
+              <h3>Private group keys</h3>
+              <p>Encryption keys stay on your device. The server does not store them.</p>
             </article>
             <article class="info-card">
-              <h3>Account security</h3>
-              <p>User passwords are hashed on the server, sessions are signed, and notifications plus startup behavior stay inside the local desktop shell.</p>
+              <h3>Desktop conveniences</h3>
+              <p>Gchat adds tray behavior, native notifications, and optional launch at startup.</p>
             </article>
             <article class="info-card">
-              <h3>Windows-native behavior</h3>
-              <p>You get tray controls, unread badge overlays, native notifications, and automatic update downloads from GitHub releases.</p>
+              <h3>Automatic updates</h3>
+              <p>New desktop releases download in the background and install after restart approval.</p>
             </article>
           </div>
         </section>
 
         <section class="step-panel" data-step="1">
           <span class="step-eyebrow">Connection check</span>
-          <h2 class="step-title">Your desktop app always connects to the official hosted server.</h2>
-          <p class="step-description">The server URL is locked for this build so setup stays simple and support stays predictable.</p>
+          <h2 class="step-title">Confirm that the official hosted server is reachable.</h2>
+          <p class="step-description">This build always connects to the same Railway deployment so setup stays simple and consistent.</p>
           <div class="url-box" id="server-url"></div>
           <article class="status-card">
             <div class="status-row">
               <span class="status-pill" id="connectivity-pill">Checking…</span>
               <span class="status-meta" id="connectivity-meta">Running the first server check now.</span>
             </div>
-            <p id="connectivity-message">Please wait while Gchat confirms it can reach Railway.</p>
+            <p id="connectivity-message">Please wait while Gchat checks the hosted service.</p>
           </article>
           <div class="button-row" style="margin-top: 20px;">
             <button class="btn-secondary" id="recheck-btn">Check again</button>
@@ -67,14 +69,14 @@
 
         <section class="step-panel" data-step="2">
           <span class="step-eyebrow">Notifications</span>
-          <h2 class="step-title">Choose how Windows alerts you about new messages.</h2>
-          <p class="step-description">Allow notifications so the desktop shell can surface native message alerts, focus the right chat, and keep unread badges in sync.</p>
+          <h2 class="step-title">Choose whether Windows can show message alerts.</h2>
+          <p class="step-description">Allow notifications if you want native desktop alerts and unread badge updates.</p>
           <article class="status-card">
             <div class="status-row">
               <span class="status-pill" id="notification-pill">Not requested yet</span>
               <span class="status-meta" id="notification-meta">Windows permission status</span>
             </div>
-            <p id="notification-message">You can continue without notifications, but the desktop app works best when they are allowed.</p>
+            <p id="notification-message">You can continue without notifications, but alerts and unread badges work best when they are allowed.</p>
           </article>
           <div class="button-row" style="margin-top: 20px;">
             <button class="btn-primary" id="notification-btn">Request notification access</button>
@@ -83,12 +85,12 @@
 
         <section class="step-panel" data-step="3">
           <span class="step-eyebrow">Startup preference</span>
-          <h2 class="step-title">Decide whether Gchat opens when Windows boots.</h2>
-          <p class="step-description">You can change this later, but setup asks once so the first-run flow stays simple.</p>
+          <h2 class="step-title">Choose whether Gchat opens when Windows starts.</h2>
+          <p class="step-description">You can change this later, but this is the quickest time to decide.</p>
           <div class="toggle-card">
             <div class="toggle-copy">
               <h3>Launch Gchat at startup</h3>
-              <p>When enabled, the desktop shell starts with Windows and restores your tray-ready chat environment automatically.</p>
+              <p>When enabled, the desktop app starts with Windows and is ready in the tray.</p>
             </div>
             <label class="toggle-switch" aria-label="Launch Gchat at startup">
               <input type="checkbox" id="launch-at-startup" />
@@ -96,14 +98,14 @@
             </label>
           </div>
           <div class="detail-box">
-            <p><strong>What this changes:</strong> Only the local desktop shell starts automatically. You will still sign in manually after setup and the app remains online-only.</p>
+            <p><strong>What this changes:</strong> Only the desktop shell starts automatically. Gchat still uses the hosted service.</p>
           </div>
         </section>
 
         <section class="step-panel" data-step="4">
           <span class="step-eyebrow">Ready to launch</span>
-          <h2 class="step-title">Finish setup and open the same sign-in experience as the web app.</h2>
-          <p class="step-description">After this step, Gchat saves your Windows desktop preferences and opens the hosted Railway sign-in page.</p>
+          <h2 class="step-title">Finish setup and open sign in.</h2>
+          <p class="step-description">Gchat will save your desktop preferences, then open the hosted sign-in page.</p>
           <div class="summary-grid">
             <article class="summary-card">
               <h3>Locked server</h3>
@@ -119,7 +121,7 @@
             </article>
             <article class="summary-card">
               <h3>Updates</h3>
-              <p>Downloaded automatically from GitHub releases, then installed after restart approval.</p>
+              <p>Downloaded automatically and installed after restart approval.</p>
             </article>
           </div>
         </section>
