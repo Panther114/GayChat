@@ -140,6 +140,7 @@ const migrations = [
   "ALTER TABLE messages ADD COLUMN total_recipients INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE group_chats ADD COLUMN allow_member_export INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE group_chats ADD COLUMN allow_member_kick INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE group_chats ADD COLUMN group_color TEXT",
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
@@ -194,6 +195,7 @@ const stmts = {
   updateGroupName: db.prepare('UPDATE group_chats SET name = ? WHERE id = ?'),
   updateGroupAllowMemberClear: db.prepare('UPDATE group_chats SET allow_member_clear = ? WHERE id = ?'),
   updateGroupAllowMemberExport: db.prepare('UPDATE group_chats SET allow_member_export = ? WHERE id = ?'),
+  updateGroupAllowMemberKick: db.prepare('UPDATE group_chats SET allow_member_kick = ? WHERE id = ?'),
   updateGroupColor: db.prepare('UPDATE group_chats SET group_color = ? WHERE id = ?'),
 
   // Members
@@ -204,7 +206,7 @@ const stmts = {
     'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?'
   ),
   getUserGroups: db.prepare(`
-    SELECT g.id, g.name, g.code, g.created_by, g.created_at, g.allow_member_clear, g.allow_member_export, g.group_color
+    SELECT g.id, g.name, g.code, g.created_by, g.created_at, g.allow_member_clear, g.allow_member_export, g.allow_member_kick, g.group_color
     FROM group_chats g
     JOIN group_members gm ON g.id = gm.group_id
     WHERE gm.user_id = ?
@@ -625,6 +627,7 @@ app.post('/api/groups/create', (req, res) => {
     createdBy: group.created_by,
     allowMemberClear: group.allow_member_clear || 0,
     allowMemberExport: group.allow_member_export || 0,
+    allowMemberKick: group.allow_member_kick || 0,
     groupColor: group.group_color || null,
   });
 });
@@ -661,6 +664,7 @@ app.post('/api/groups/join', (req, res) => {
     createdBy: group.created_by,
     allowMemberClear: group.allow_member_clear || 0,
     allowMemberExport: group.allow_member_export || 0,
+    allowMemberKick: group.allow_member_kick || 0,
     groupColor: group.group_color || null,
   });
 });
@@ -676,6 +680,7 @@ app.get('/api/groups/mine', (req, res) => {
       createdBy: g.created_by,
       allowMemberClear: g.allow_member_clear || 0,
       allowMemberExport: g.allow_member_export || 0,
+      allowMemberKick: g.allow_member_kick || 0,
       groupColor: g.group_color || null,
     }))
   );
@@ -703,7 +708,7 @@ app.patch('/api/groups/:groupId/name', (req, res) => {
 app.patch('/api/groups/:groupId/settings', (req, res) => {
   const { groupId } = req.params;
   const userId = req.session.userId;
-  const { allowMemberClear, allowMemberExport, groupColor } = req.body;
+  const { allowMemberClear, allowMemberExport, allowMemberKick, groupColor } = req.body;
 
   const group = stmts.findGroupById.get(groupId);
   if (!group) return res.status(404).json({ error: 'Group not found' });
@@ -714,6 +719,9 @@ app.patch('/api/groups/:groupId/settings', (req, res) => {
   }
   if (allowMemberExport !== undefined) {
     stmts.updateGroupAllowMemberExport.run(allowMemberExport ? 1 : 0, groupId);
+  }
+  if (allowMemberKick !== undefined) {
+    stmts.updateGroupAllowMemberKick.run(allowMemberKick ? 1 : 0, groupId);
   }
   if (groupColor !== undefined) {
     if (groupColor !== null && (typeof groupColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(groupColor))) {
@@ -726,6 +734,7 @@ app.patch('/api/groups/:groupId/settings', (req, res) => {
     groupId,
     allowMemberClear: !!updated.allow_member_clear,
     allowMemberExport: !!updated.allow_member_export,
+    allowMemberKick: !!updated.allow_member_kick,
     groupColor: updated.group_color || null,
   });
   res.json({ ok: true });
@@ -777,61 +786,12 @@ app.delete('/api/groups/:groupId/messages', (req, res) => {
 
 // DELETE /api/groups/:groupId/messages/:messageId — delete single message
 app.delete('/api/groups/:groupId/messages/:messageId', (req, res) => {
-  const { groupId, messageId } = req.params;
-  const userId = req.session.userId;
-
-  const member = stmts.isMember.get(groupId, userId);
-  if (!member) return res.status(403).json({ error: 'Not a member of this group' });
-
-  const message = stmts.findMessageById.get(messageId);
-  if (!message || message.group_id !== groupId) {
-    return res.status(404).json({ error: 'Message not found' });
-  }
-
-  const group = stmts.findGroupById.get(groupId);
-  const isOwner = group && group.created_by === userId;
-  const isSender = message.sender_id === userId;
-
-  if (!isOwner && !isSender) {
-    return res.status(403).json({ error: 'You can only delete your own messages' });
-  }
-
-  stmts.deleteMessage.run(messageId);
-  io.to(groupId).emit('message_deleted', { messageId, groupId });
-  res.json({ ok: true });
+  return res.status(403).json({ error: 'Recalling sent messages is disabled' });
 });
 
 // PATCH /api/groups/:groupId/messages/:messageId — edit a message (sender only, text/whisper)
 app.patch('/api/groups/:groupId/messages/:messageId', (req, res) => {
-  const { groupId, messageId } = req.params;
-  const userId = req.session.userId;
-  const { encryptedContent, iv } = req.body;
-
-  if (!encryptedContent || typeof encryptedContent !== 'string' || !iv || typeof iv !== 'string') {
-    return res.status(400).json({ error: 'encryptedContent and iv are required' });
-  }
-  if (encryptedContent.length > MAX_ENCRYPTED_CONTENT_LENGTH) {
-    return res.status(400).json({ error: 'Message too large.' });
-  }
-
-  const member = stmts.isMember.get(groupId, userId);
-  if (!member) return res.status(403).json({ error: 'Not a member of this group' });
-
-  const message = stmts.findMessageById.get(messageId);
-  if (!message || message.group_id !== groupId) {
-    return res.status(404).json({ error: 'Message not found' });
-  }
-  if (message.sender_id !== userId) {
-    return res.status(403).json({ error: 'You can only edit your own messages' });
-  }
-  if (message.type !== 'text' && message.type !== 'whisper') {
-    return res.status(400).json({ error: 'Only text messages can be edited' });
-  }
-
-  const editedAt = new Date().toISOString();
-  stmts.updateMessage.run(encryptedContent, iv, editedAt, messageId);
-  io.to(groupId).emit('message_edited', { messageId, groupId, encryptedContent, iv, editedAt });
-  res.json({ ok: true });
+  return res.status(403).json({ error: 'Editing sent messages is disabled' });
 });
 
 // DELETE /api/groups/:groupId/leave — leave group (non-owner)
@@ -950,7 +910,7 @@ app.post('/api/groups/:groupId/upload-image', (req, res) => {
   app.handle(req, res);
 });
 
-// DELETE /api/groups/:groupId/members/:userId — kick a member (owner only)
+// DELETE /api/groups/:groupId/members/:userId — kick a member
 app.delete('/api/groups/:groupId/members/:userId', (req, res) => {
   const { groupId, userId: targetUserId } = req.params;
   const userId = req.session.userId;
@@ -959,12 +919,27 @@ app.delete('/api/groups/:groupId/members/:userId', (req, res) => {
   if (!member) return res.status(403).json({ error: 'Not a member of this group' });
 
   const group = stmts.findGroupById.get(groupId);
-  if (!group || group.created_by !== userId) {
-    return res.status(403).json({ error: 'Only the group owner can kick members' });
+  if (!group) {
+    return res.status(404).json({ error: 'Group not found' });
   }
 
   if (targetUserId === userId) {
     return res.status(400).json({ error: 'You cannot kick yourself' });
+  }
+
+  if (String(targetUserId) === String(group.created_by)) {
+    return res.status(403).json({ error: 'Group owner cannot be kicked' });
+  }
+
+  const isOwner = String(group.created_by) === String(userId);
+  const canMemberKick = !!group.allow_member_kick;
+  if (!isOwner && !canMemberKick) {
+    return res.status(403).json({ error: 'Only the group owner can kick members' });
+  }
+
+  const targetMember = stmts.isMember.get(groupId, targetUserId);
+  if (!targetMember) {
+    return res.status(404).json({ error: 'Member not found' });
   }
 
   stmts.deleteMember.run(groupId, targetUserId);

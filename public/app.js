@@ -368,6 +368,18 @@ function hideImageViewer() {
   img.src = '';
 }
 
+function isMessagesPinnedToBottom() {
+  const area = messagesArea();
+  if (!area) return false;
+  return area.scrollHeight - area.scrollTop - area.clientHeight < 40;
+}
+
+function pinMessagesToBottom(instant = true) {
+  const area = messagesArea();
+  if (!area) return;
+  area.scrollTo({ top: area.scrollHeight, behavior: instant ? 'instant' : 'smooth' });
+}
+
 function createAvatarImage(src) {
   const img = document.createElement('img');
   img.src = src;
@@ -943,6 +955,15 @@ function updateGroupActionButtons(isOwner) {
   }
 }
 
+function canCurrentUserKickMember(targetUserId) {
+  if (!currentGroupData || !currentUser) return false;
+  if (String(targetUserId) === String(currentUser.id)) return false;
+  if (String(targetUserId) === String(currentGroupData.createdBy)) return false;
+  const isOwner = String(currentGroupData.createdBy) === String(currentUser.id);
+  if (isOwner) return true;
+  return !!currentGroupData.allowMemberKick;
+}
+
 function updateGroupPreview(groupId, text, time) {
   const el = $('preview-' + groupId);
   if (el) el.textContent = (time ? formatTime(time) + ' ' : '') + truncate(text, 35);
@@ -985,7 +1006,7 @@ async function selectGroup(groupId) {
 
   // Set header
   $('chat-group-name').textContent = currentGroupData ? currentGroupData.name : '';
-  $('right-group-name').textContent = currentGroupData ? currentGroupData.name : '';
+  $('edit-group-name-input').value = currentGroupData ? currentGroupData.name : '';
   $('right-group-code').textContent = currentGroupData ? currentGroupData.code : '';
   $('right-panel-content').hidden = false;
   $('right-panel-empty').hidden = true;
@@ -998,6 +1019,7 @@ async function selectGroup(groupId) {
   if (currentGroupData) {
     $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
     $('allow-member-export-toggle').checked = !!currentGroupData.allowMemberExport;
+    $('allow-member-kick-toggle').checked = !!currentGroupData.allowMemberKick;
   }
   updateGroupActionButtons(isOwner);
 
@@ -1029,6 +1051,7 @@ function updateKeyState() {
   const hasKey = !!key;
   const input = $('message-input');
   const sendBtn = $('send-btn');
+  setElementIcon($('set-key-btn'), 'key-round', { label: hasKey ? 'Change Key' : 'Set Key' });
   input.disabled = !hasKey;
   input.placeholder = hasKey ? 'Type a message…' : 'Enter group key to continue';
   sendBtn.disabled = !hasKey;
@@ -1127,7 +1150,7 @@ function renderMembersList() {
       li.appendChild(tag);
     }
 
-    if (currentGroupData && currentGroupData.createdBy === currentUser.id && m.id !== currentUser.id) {
+    if (canCurrentUserKickMember(m.id)) {
       const kickBtn = document.createElement('button');
       kickBtn.className = 'member-kick-btn';
       kickBtn.title = 'Kick member';
@@ -1449,10 +1472,10 @@ let ctxText = '';
 function showContextMenu(e, msg, text) {
   ctxMsg = msg; ctxText = text;
   const menu = $('ctx-menu');
-  // Show "Edit" only for own text/whisper messages
-  const canEdit = msg.senderId === currentUser.id &&
-    (msg.type === 'text' || msg.type === 'whisper');
-  $('ctx-edit').hidden = !canEdit;
+  const isAttachment = msg.type === 'image' || msg.type === 'file';
+  $('ctx-reply').hidden = isAttachment;
+  $('ctx-download').hidden = !isAttachment;
+  setElementIcon($('ctx-copy'), 'copy', { label: isAttachment ? 'Copy' : 'Copy Text' });
   menu.hidden = false;
   if (e) {
     menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + 'px';
@@ -1463,6 +1486,54 @@ function showContextMenu(e, msg, text) {
 }
 
 function hideContextMenu() { $('ctx-menu').hidden = true; ctxMsg = null; }
+
+async function getAttachmentData(msg) {
+  if (!msg || (msg.type !== 'image' && msg.type !== 'file')) return null;
+  const key = currentGroupId ? getGroupKey(currentGroupId) : null;
+  if (!key) {
+    showToast('Set group key first', 'error');
+    return null;
+  }
+  const bytes = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
+  if (!bytes) {
+    showToast('Unable to decrypt file', 'error');
+    return null;
+  }
+  const mimeType = msg.type === 'image' ? (detectImageMime(bytes) || 'image/png') : 'application/octet-stream';
+  const blob = new Blob([bytes], { type: mimeType });
+  const filename = msg.filename || (msg.type === 'image' ? 'image' : 'file');
+  return { blob, filename, mimeType };
+}
+
+async function copyAttachmentToClipboard(msg) {
+  const data = await getAttachmentData(msg);
+  if (!data) return;
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    showToast('Clipboard file copy is not supported in this environment', 'error');
+    return;
+  }
+  try {
+    const item = new ClipboardItem({ [data.mimeType]: data.blob });
+    await navigator.clipboard.write([item]);
+    showToast('Copied to clipboard', 'success');
+  } catch (err) {
+    console.error('copyAttachmentToClipboard error:', err);
+    showToast('Failed to copy file', 'error');
+  }
+}
+
+async function downloadAttachment(msg) {
+  const data = await getAttachmentData(msg);
+  if (!data) return;
+  const url = URL.createObjectURL(data.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = data.filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 // ── Edit message ──────────────────────────────────────────────────────────────
 async function startEditMessage(msg, currentPlaintext) {
@@ -1848,16 +1919,17 @@ function initSocket() {
     if (g) g.name = newName;
     if (groupId === currentGroupId) {
       $('chat-group-name').textContent = newName;
-      $('right-group-name').textContent = newName;
+      $('edit-group-name-input').value = newName;
     }
     renderGroupList();
   });
 
-  socket.on('group_settings_updated', ({ groupId, allowMemberClear, allowMemberExport, groupColor }) => {
+  socket.on('group_settings_updated', ({ groupId, allowMemberClear, allowMemberExport, allowMemberKick, groupColor }) => {
     const group = groups.find((g) => g.id === groupId);
     if (group) {
       if (allowMemberClear !== undefined) group.allowMemberClear = !!allowMemberClear;
       if (allowMemberExport !== undefined) group.allowMemberExport = !!allowMemberExport;
+      if (allowMemberKick !== undefined) group.allowMemberKick = !!allowMemberKick;
       if (groupColor !== undefined) group.groupColor = groupColor || null;
     }
     const cache = ensureGroupCacheEntry(groupId);
@@ -1869,14 +1941,17 @@ function initSocket() {
     if (currentGroupData) {
       if (allowMemberClear !== undefined) currentGroupData.allowMemberClear = !!allowMemberClear;
       if (allowMemberExport !== undefined) currentGroupData.allowMemberExport = !!allowMemberExport;
+      if (allowMemberKick !== undefined) currentGroupData.allowMemberKick = !!allowMemberKick;
       if (groupColor !== undefined) currentGroupData.groupColor = groupColor || null;
     }
     const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
     if (isOwner) {
       $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
       $('allow-member-export-toggle').checked = !!currentGroupData.allowMemberExport;
+      $('allow-member-kick-toggle').checked = !!currentGroupData.allowMemberKick;
     }
     updateGroupActionButtons(isOwner);
+    renderMembersList();
     renderGroupList();
   });
 
@@ -2054,13 +2129,16 @@ function setupKeyboardShortcuts() {
 
 // ── Auto-resize textarea ──────────────────────────────────────────────────────
 function autoResizeTextarea(el) {
+  const keepBottomPinned = isMessagesPinnedToBottom();
   el.style.height = 'auto';
   const maxH = 5 * 20 + 18; // ~5 lines
   el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+  if (keepBottomPinned) pinMessagesToBottom();
 }
 
 // ── Whisper mode ──────────────────────────────────────────────────────────────
 function updateWhisperBtn() {
+  const keepBottomPinned = isMessagesPinnedToBottom();
   const btn = $('whisper-mode-btn');
   if (messageMode === 'whisper') {
     setElementIcon(btn, 'megaphone', { iconOnly: true });
@@ -2071,6 +2149,7 @@ function updateWhisperBtn() {
     btn.classList.remove('whisper-active');
     $('whisper-picker').hidden = true;
   }
+  if (keepBottomPinned) pinMessagesToBottom();
 }
 
 // ── Toggle encryption display ─────────────────────────────────────────────────
@@ -2414,50 +2493,50 @@ function setupEventListeners() {
   });
 
   // Edit group name
-  $('edit-group-name-btn').addEventListener('click', () => {
-    $('edit-group-name-input').value = currentGroupData ? currentGroupData.name : '';
-    $('edit-group-name-form').hidden = false;
-    $('edit-group-name-btn').hidden = true;
-    $('edit-group-name-input').focus();
-  });
-  $('edit-group-name-cancel').addEventListener('click', () => {
-    $('edit-group-name-form').hidden = true;
-    $('edit-group-name-btn').hidden = false;
-  });
-  $('edit-group-name-save').addEventListener('click', async () => {
+  let groupRenameInFlight = false;
+  const saveGroupName = async () => {
     const name = $('edit-group-name-input').value.trim();
-    if (!name || !currentGroupId) return;
+    if (!name || !currentGroupId || groupRenameInFlight) return;
+    if (currentGroupData && name === currentGroupData.name) return;
+    groupRenameInFlight = true;
     const res = await fetch('/api/groups/' + currentGroupId + '/name', {
       method: 'PATCH', headers: apiHeaders(),
       body: JSON.stringify({ name }),
     });
-    if (res.ok) {
-      $('edit-group-name-form').hidden = true;
-      $('edit-group-name-btn').hidden = false;
-    } else {
+    groupRenameInFlight = false;
+    if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       showToast(d.error || 'Failed to rename', 'error');
+      $('edit-group-name-input').value = currentGroupData ? currentGroupData.name : '';
+    }
+  };
+  $('edit-group-name-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.target.blur();
     }
   });
+  $('edit-group-name-input').addEventListener('blur', saveGroupName);
 
   // Group color
   $('set-group-color-btn').addEventListener('click', () => {
     if (!currentGroupId) return;
-    const picker = document.createElement('input');
-    picker.type = 'color';
-    picker.value = (currentGroupData && currentGroupData.groupColor) || '#4a90d9';
-    picker.addEventListener('change', async (e) => {
-      const groupColor = e.target.value;
-      const res = await fetch('/api/groups/' + currentGroupId + '/settings', {
-        method: 'PATCH', headers: apiHeaders(),
-        body: JSON.stringify({ groupColor }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        showToast(d.error || 'Failed to set group color', 'error');
-      }
-    }, { once: true });
-    picker.click();
+    $('group-color-input').value = (currentGroupData && currentGroupData.groupColor) || '#4a90d9';
+    $('group-color-modal').hidden = false;
+  });
+  $('group-color-cancel-btn').addEventListener('click', () => { $('group-color-modal').hidden = true; });
+  $('group-color-save-btn').addEventListener('click', async () => {
+    const groupColor = $('group-color-input').value;
+    const res = await fetch('/api/groups/' + currentGroupId + '/settings', {
+      method: 'PATCH', headers: apiHeaders(),
+      body: JSON.stringify({ groupColor }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || 'Failed to set group color', 'error');
+      return;
+    }
+    $('group-color-modal').hidden = true;
   });
 
   // Clear chat history
@@ -2498,6 +2577,17 @@ function setupEventListeners() {
     if (currentGroupData) {
       currentGroupData.allowMemberExport = e.target.checked;
       updateGroupActionButtons(currentGroupData.createdBy === currentUser.id);
+    }
+  });
+
+  $('allow-member-kick-toggle').addEventListener('change', async (e) => {
+    await fetch('/api/groups/' + currentGroupId + '/settings', {
+      method: 'PATCH', headers: apiHeaders(),
+      body: JSON.stringify({ allowMemberKick: e.target.checked }),
+    });
+    if (currentGroupData) {
+      currentGroupData.allowMemberKick = e.target.checked;
+      renderMembersList();
     }
   });
 
@@ -2584,18 +2674,18 @@ function setupEventListeners() {
   });
 
   $('ctx-copy').addEventListener('click', () => {
-    if (ctxText) navigator.clipboard.writeText(ctxText).catch(() => {});
+    if (ctxMsg && (ctxMsg.type === 'image' || ctxMsg.type === 'file')) {
+      copyAttachmentToClipboard(ctxMsg);
+    } else if (ctxText) {
+      navigator.clipboard.writeText(ctxText).catch(() => {});
+    }
     hideContextMenu();
   });
 
-  $('ctx-edit').addEventListener('click', () => {
-    if (!ctxMsg) return;
-    const msg = ctxMsg;
-    const text = ctxText;
+  $('ctx-download').addEventListener('click', () => {
+    if (!ctxMsg || (ctxMsg.type !== 'image' && ctxMsg.type !== 'file')) return;
+    downloadAttachment(ctxMsg);
     hideContextMenu();
-    const isDecryptFail = text === MSG_NO_KEY || text === MSG_DECRYPT_FAIL;
-    if (isDecryptFail) { showToast('Cannot edit — message not decrypted', 'error'); return; }
-    startEditMessage(msg, text);
   });
 
   document.addEventListener('click', (e) => {
