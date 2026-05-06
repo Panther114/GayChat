@@ -346,7 +346,7 @@ let allMessages = [];
 let oldestMessageId = null;
 let loadingOlder = false;
 let clientRateLimiter = { times: [], lastContent: '', repeatCount: 0 };
-let originalPageTitle = 'Gchat ';
+let originalPageTitle = 'GChat ';
 let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
 let readObserver = null;
@@ -1249,7 +1249,7 @@ function initSocket() {
       // Send native OS notification when a message arrives in a background group
       if (msg.senderId !== currentUser.id) {
         const groupData = groups.find(g => g.id === msg.groupId);
-        const groupName = groupData ? groupData.name : 'Gchat';
+        const groupName = groupData ? groupData.name : 'GChat';
         sendNativeNotification(
           `${msg.senderName} in ${groupName}`,
           getNotificationBody(msg, preview),
@@ -1272,7 +1272,7 @@ function initSocket() {
     // Send native OS notification when the window is not focused (active group)
     if (!document.hasFocus() && msg.senderId !== currentUser.id) {
       const groupData = groups.find(g => g.id === msg.groupId);
-      const groupName = groupData ? groupData.name : 'Gchat';
+      const groupName = groupData ? groupData.name : 'GChat';
       sendNativeNotification(
         `${msg.senderName} in ${groupName}`,
         getNotificationBody(msg, preview2),
