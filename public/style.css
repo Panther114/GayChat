@@ -602,8 +602,6 @@ body.chat-body {
   border-radius: 8px;
   display: block;
   background: #111;
-  pointer-events: none;
-  user-select: none;
   -webkit-user-drag: none;
 }
 .msg-image-locked { background: #111; width: 220px; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--text-muted); }
@@ -883,12 +881,18 @@ body.chat-body {
   border-radius: 8px;
   padding: 5px 8px;
 }
-.btn-edit-name { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; }
-
-#edit-group-name-form { display: flex; flex-direction: column; gap: 6px; }
-#edit-group-name-form input { background: #0d0d18; border: 1px solid #2a2a3e; border-radius: 6px; color: var(--text-primary); font-size: 13px; padding: 7px 10px; outline: none; }
-#edit-group-name-form input:focus { border-color: var(--accent); }
-#edit-group-name-form div { display: flex; gap: 6px; }
+.right-panel-title-input {
+  width: 100%;
+  background: #0d0d18;
+  border: 1px solid #2f3f62;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 6px 8px;
+  outline: none;
+}
+.right-panel-title-input:focus { border-color: var(--accent); }
 
 .right-panel-code { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .right-panel-code strong { color: var(--accent2); font-family: monospace; }

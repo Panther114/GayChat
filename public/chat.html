@@ -105,13 +105,7 @@
     <button class="btn-icon mobile-panel-close" id="right-panel-close" title="Close details" aria-label="Close details" data-icon="x" data-icon-only="true"></button>
     <div class="right-panel-inner" id="right-panel-content" hidden>
       <div class="right-panel-group-name-row">
-        <h3 class="right-panel-title right-panel-title-editable" id="right-group-name">Group</h3>
-        <button class="btn-edit-name" id="edit-group-name-btn" title="Rename group" aria-label="Rename group" data-icon="pencil" data-icon-only="true"></button>
-      </div>
-      <div id="edit-group-name-form" hidden>
-        <input type="text" id="edit-group-name-input" placeholder="New group name" />
-        <button class="btn-primary btn-sm" id="edit-group-name-save">Save</button>
-        <button class="btn-secondary btn-sm" id="edit-group-name-cancel">Cancel</button>
+        <input type="text" class="right-panel-title-input" id="edit-group-name-input" value="Group" />
       </div>
       <button class="btn-action-sm btn-group-color" id="set-group-color-btn" data-icon="palette">Set Group Color</button>
       <div class="right-panel-code">
@@ -140,6 +134,11 @@
         <label class="toggle-label toggle-switch-row" for="allow-member-export-toggle">
           <span>Members can export</span>
           <input type="checkbox" id="allow-member-export-toggle" />
+          <span class="toggle-switch-ui" aria-hidden="true"></span>
+        </label>
+        <label class="toggle-label toggle-switch-row" for="allow-member-kick-toggle">
+          <span>Members can kick</span>
+          <input type="checkbox" id="allow-member-kick-toggle" />
           <span class="toggle-switch-ui" aria-hidden="true"></span>
         </label>
       </div>
@@ -278,8 +277,24 @@
 
   <div class="ctx-menu" id="ctx-menu" hidden>
     <button class="ctx-item" id="ctx-reply" data-icon="reply">Reply</button>
-    <button class="ctx-item" id="ctx-copy" data-icon="copy">Copy Text</button>
-    <button class="ctx-item" id="ctx-edit" data-icon="pencil">Edit</button>
+    <button class="ctx-item" id="ctx-copy" data-icon="copy">Copy</button>
+    <button class="ctx-item" id="ctx-download" data-icon="download">Download</button>
+  </div>
+
+  <div class="modal-overlay" id="group-color-modal" hidden>
+    <div class="modal">
+      <h2>Change Group Color</h2>
+      <div class="form-group form-group-color">
+        <label>Pick color</label>
+        <div class="color-pick-row">
+          <input type="color" id="group-color-input" value="#4a90d9" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="group-color-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="group-color-save-btn">Confirm</button>
+      </div>
+    </div>
   </div>
 
   <div class="image-viewer-modal" id="image-viewer-modal" hidden>
