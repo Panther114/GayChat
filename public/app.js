@@ -368,22 +368,24 @@ function renderCurrentUserAvatar(user = currentUser) {
   const avatar = $('user-avatar');
   if (!avatar || !user) return;
   avatar.replaceChildren();
+  const initial = user.username ? user.username[0].toUpperCase() : '';
   if (user.profilePicture) {
     avatar.style.background = 'none';
     avatar.appendChild(createAvatarImage(user.profilePicture));
     return;
   }
   avatar.style.background = user.iconColor;
-  avatar.textContent = user.username ? user.username[0].toUpperCase() : '';
+  avatar.textContent = initial;
 }
 
-function getGroupCacheEntry(groupId) {
+function ensureGroupCacheEntry(groupId) {
   if (!groupDataCache.has(groupId)) {
     groupDataCache.set(groupId, {
       messages: null,
       messageRows: null,
       members: null,
       oldestMessageId: null,
+      rowsDirty: false,
     });
   }
   return groupDataCache.get(groupId);
@@ -399,18 +401,24 @@ function createLoadMoreIndicator() {
 }
 
 async function buildMessageRows(messages, groupId) {
-  return Promise.all(messages.map((msg) => buildMessageRow(msg, groupId)));
+  const results = await Promise.allSettled(messages.map((msg) => buildMessageRow(msg, groupId)));
+  return results.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [result.value];
+    console.error('buildMessageRow failed:', messages[index]?.id, result.reason);
+    return [];
+  });
 }
 
 async function rebuildGroupMessageRows(groupId) {
-  const cache = getGroupCacheEntry(groupId);
+  const cache = ensureGroupCacheEntry(groupId);
   if (!cache.messages) return;
   cache.messageRows = await buildMessageRows(cache.messages, groupId);
   cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
+  cache.rowsDirty = false;
 }
 
 function renderGroupFromCache(groupId) {
-  const cache = getGroupCacheEntry(groupId);
+  const cache = ensureGroupCacheEntry(groupId);
   const area = messagesArea();
   if (!area) return;
 
@@ -431,18 +439,27 @@ function renderGroupFromCache(groupId) {
 
 function preloadAllGroups() {
   for (const group of groups) {
-    void ensureGroupDataPreloaded(group.id);
+    void ensureGroupDataPreloaded(group.id).catch((err) => {
+      console.error('Background preload failed:', group.id, err);
+    });
   }
 }
 
 async function ensureGroupDataPreloaded(groupId) {
   if (groupPreloadPromises.has(groupId)) return groupPreloadPromises.get(groupId);
-  const cache = getGroupCacheEntry(groupId);
-  if (cache.messages && cache.members && cache.messageRows) return cache;
+  const cache = ensureGroupCacheEntry(groupId);
+  if (cache.messages && cache.members && cache.messageRows && !cache.rowsDirty) return cache;
 
   const preload = (async () => {
-    await Promise.all([loadMessages(groupId), loadMembers(groupId)]);
-    return getGroupCacheEntry(groupId);
+    if (cache.messages && cache.members && cache.rowsDirty) {
+      await rebuildGroupMessageRows(groupId);
+      return ensureGroupCacheEntry(groupId);
+    }
+    const results = await Promise.allSettled([loadMessages(groupId), loadMembers(groupId)]);
+    for (const result of results) {
+      if (result.status === 'rejected') console.error('Group preload failed:', groupId, result.reason);
+    }
+    return ensureGroupCacheEntry(groupId);
   })();
 
   groupPreloadPromises.set(groupId, preload);
@@ -459,6 +476,7 @@ const MSG_DECRYPT_FAIL = '[Unable to decrypt]';
 
 // Scroll threshold (px from top) that triggers loading older messages
 const SCROLL_LOAD_THRESHOLD = 1;
+const MOBILE_BREAKPOINT = 768;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -649,7 +667,7 @@ function applyStaticIcons() {
 }
 
 function isMobileLayout() {
-  return window.innerWidth <= 768;
+  return window.innerWidth <= MOBILE_BREAKPOINT;
 }
 
 function updateMobilePanelOverlay() {
@@ -880,7 +898,7 @@ async function selectGroup(groupId) {
   // Socket room
   if (socket) socket.emit('join_room', groupId);
 
-  const cache = getGroupCacheEntry(groupId);
+  const cache = ensureGroupCacheEntry(groupId);
   if (!cache.messages || !cache.members || !cache.messageRows) {
     messagesArea().replaceChildren(createLoadMoreIndicator());
     members = [];
@@ -921,10 +939,11 @@ async function loadMessages(groupId, before) {
     }
     const msgs = await res.json();
     if (!before) {
-      const cache = getGroupCacheEntry(groupId);
+      const cache = ensureGroupCacheEntry(groupId);
       cache.messages = msgs;
       cache.messageRows = await buildMessageRows(msgs, groupId);
       cache.oldestMessageId = msgs.length > 0 ? msgs[0].id : null;
+      cache.rowsDirty = false;
     } else {
       // Prepend older messages
       const area = messagesArea();
@@ -941,10 +960,11 @@ async function loadMessages(groupId, before) {
       if (oldFirst) area.insertBefore(fragment, oldFirst);
       else area.appendChild(fragment);
       allMessages = [...msgs, ...allMessages];
-      const cache = getGroupCacheEntry(groupId);
+      const cache = ensureGroupCacheEntry(groupId);
       cache.messages = allMessages;
       cache.messageRows = [...rows, ...(cache.messageRows || [])];
       cache.oldestMessageId = msgs[0].id;
+      cache.rowsDirty = false;
       // Restore scroll position
       area.scrollTop = area.scrollHeight - prevScrollHeight;
     }
@@ -960,7 +980,7 @@ async function loadMembers(groupId) {
   try {
     const res = await fetch(`/api/groups/${groupId}/members`);
     if (!res.ok) return;
-    getGroupCacheEntry(groupId).members = await res.json();
+    ensureGroupCacheEntry(groupId).members = await res.json();
   } catch(err) { console.error('loadMembers error:', err); }
 }
 
@@ -1277,11 +1297,12 @@ async function appendMessageBubble(msg, scroll, groupId = currentGroupId) {
   area.appendChild(row);
   observeMessageForRead(row, msg);
   allMessages.push(msg);
-  const cache = getGroupCacheEntry(groupId);
+  const cache = ensureGroupCacheEntry(groupId);
   cache.messages = allMessages;
   cache.messageRows = cache.messageRows || [];
   cache.messageRows.push(row);
   cache.oldestMessageId = allMessages.length ? allMessages[0].id : null;
+  cache.rowsDirty = false;
 
   // Scroll behavior
   if (scroll !== false) {
@@ -1572,12 +1593,12 @@ function initSocket() {
     }
 
     if (msg.groupId !== currentGroupId) {
-      const cache = getGroupCacheEntry(msg.groupId);
+      const cache = ensureGroupCacheEntry(msg.groupId);
       if (cache.messages) {
         cache.messages.push(msg);
         cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
       }
-      if (cache.messageRows) {
+      if (cache.messageRows && !cache.rowsDirty) {
         const row = await buildMessageRow(msg, msg.groupId);
         if (row) {
           const prev = cache.messageRows[cache.messageRows.length - 1];
@@ -1648,7 +1669,11 @@ function initSocket() {
       const index = cache.messages ? cache.messages.findIndex((msg) => msg.id === messageId) : -1;
       if (index === -1) continue;
       cache.messages.splice(index, 1);
-      if (cache.messageRows) cache.messageRows = cache.messageRows.filter((msgRow) => msgRow?.dataset?.msgId !== messageId);
+      if (groupId === currentGroupId && cache.messageRows) {
+        cache.messageRows = cache.messageRows.filter((msgRow) => msgRow?.dataset?.msgId !== messageId);
+      } else {
+        cache.rowsDirty = true;
+      }
       cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
       if (groupId === currentGroupId) {
         allMessages = cache.messages;
@@ -1697,18 +1722,19 @@ function initSocket() {
       stored.encryptedContent = encryptedContent;
       stored.iv = iv;
       stored.editedAt = editedAt;
-      if (groupId !== currentGroupId) await rebuildGroupMessageRows(groupId);
+      if (groupId !== currentGroupId) cache.rowsDirty = true;
       if (groupId === currentGroupId) allMessages = cache.messages;
       break;
     }
   });
 
   socket.on('chat_cleared', ({ groupId }) => {
-    const cache = getGroupCacheEntry(groupId);
+    const cache = ensureGroupCacheEntry(groupId);
     cache.messages = [];
     cache.messageRows = [];
     cache.members = cache.members || [];
     cache.oldestMessageId = null;
+    cache.rowsDirty = false;
     if (groupId !== currentGroupId) return;
     renderGroupFromCache(groupId);
     addSystemMessage('Chat history was cleared');
@@ -1725,7 +1751,7 @@ function initSocket() {
   });
 
   socket.on('member_joined', ({ userId, username, iconColor, groupId }) => {
-    const cache = getGroupCacheEntry(groupId);
+    const cache = ensureGroupCacheEntry(groupId);
     if (cache.members && !cache.members.find(m => m.id === userId)) {
       cache.members.push({ id: userId, username, iconColor });
     }
@@ -1738,7 +1764,7 @@ function initSocket() {
   });
 
   socket.on('member_left', ({ userId, username, groupId }) => {
-    const cache = getGroupCacheEntry(groupId);
+    const cache = ensureGroupCacheEntry(groupId);
     if (cache.members) cache.members = cache.members.filter((member) => member.id !== userId);
     if (groupId !== currentGroupId) return;
     addSystemMessage(username + ' left the group');
@@ -1905,11 +1931,11 @@ function autoResizeTextarea(el) {
 function updateWhisperBtn() {
   const btn = $('whisper-mode-btn');
   if (messageMode === 'whisper') {
-    setElementIcon(btn, 'message-square', { iconOnly: true });
+    setElementIcon(btn, 'megaphone', { iconOnly: true });
     btn.classList.add('whisper-active');
     $('whisper-picker').hidden = false;
   } else {
-    setElementIcon(btn, 'megaphone', { iconOnly: true });
+    setElementIcon(btn, 'message-square', { iconOnly: true });
     btn.classList.remove('whisper-active');
     $('whisper-picker').hidden = true;
   }
