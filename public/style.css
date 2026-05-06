@@ -48,7 +48,11 @@ body.auth-body {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: url('gchat_wallpaper.jpg');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: auto;
 }
 
 .auth-card {
@@ -62,7 +66,13 @@ body.auth-body {
 }
 
 .auth-logo { text-align: center; margin-bottom: 24px; }
-.auth-logo-icon { font-size: 40px; }
+.auth-logo-icon {
+  width: 56px;
+  height: 56px;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+}
 .auth-title { font-size: 24px; font-weight: 700; margin-top: 8px; background: linear-gradient(135deg, #667eea, #00d4aa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 .auth-subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
 
@@ -75,6 +85,21 @@ body.auth-body {
 
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
 .form-group input, .form-group textarea {
   background: #0d0d18;
   border: 1px solid #2a2a3e;
@@ -174,7 +199,12 @@ body.chat-body {
   gap: 8px;
   border-bottom: 1px solid #1a1a2e;
 }
-.brand-icon { font-size: 20px; }
+.brand-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  object-fit: contain;
+}
 .brand-name { font-size: 17px; font-weight: 700; background: linear-gradient(135deg, #667eea, #00d4aa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 
 .conn-status {
@@ -315,6 +345,18 @@ body.chat-body {
   position: relative;
 }
 
+.chat-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--chat-bg);
+  background-image: url('gchat_wallpaper.jpg');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: auto;
+  z-index: 0;
+}
+
 .chat-empty {
   flex: 1;
   display: flex;
@@ -324,8 +366,14 @@ body.chat-body {
   gap: 12px;
   color: var(--text-muted);
   position: relative;
+  z-index: 1;
 }
-.chat-empty-icon { font-size: 56px; opacity: .3; }
+.chat-empty-icon {
+  width: 72px;
+  height: 72px;
+  opacity: .32;
+  object-fit: contain;
+}
 .chat-empty-title { font-size: 18px; font-weight: 600; color: var(--text-secondary); }
 .chat-empty-sub { font-size: 13px; color: var(--text-muted); }
 
@@ -334,7 +382,7 @@ body.chat-body {
   display: none;
 }
 
-.chat-active { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.chat-active { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 1; }
 
 .chat-topbar {
   display: flex;

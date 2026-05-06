@@ -43,6 +43,7 @@ app.use((req, res, next) => {
 // locks the IP for the remainder of that window.
 const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 const LOGIN_MAX_ATTEMPTS   = 10;
+const REMEMBER_ME_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const loginAttempts = new Map(); // ip -> { count, windowStart }
 
 // Periodically prune stale entries so the map doesn't grow unboundedly.
@@ -278,7 +279,6 @@ const sessionMiddleware = session({
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT != null,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   },
 });
 
@@ -372,6 +372,16 @@ function formatMessage(m) {
   };
 }
 
+function setSessionPersistence(req, rememberMe) {
+  if (rememberMe) {
+    req.session.cookie.maxAge = REMEMBER_ME_MAX_AGE;
+    return;
+  }
+
+  req.session.cookie.expires = false;
+  req.session.cookie.maxAge = null;
+}
+
 // ── Auth Routes ───────────────────────────────────────────────────────────────
 
 app.get('/api/auth/csrf', (req, res) => {
@@ -428,7 +438,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, rememberMe } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -455,6 +465,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     clearLoginAttempts(clientIp);
     req.session.userId = user.id;
+    setSessionPersistence(req, rememberMe === true);
     req.session.save(() => {
       res.json(formatUser(user));
     });

@@ -62,8 +62,9 @@ let lastLoadError = null;
 // ── Resolve icon path ─────────────────────────────────────────────────────────
 function getIconPath() {
   const candidates = [
-    path.join(__dirname, '..', 'public', 'favicon.svg'),
+    path.join(__dirname, '..', 'public', 'gchat_icon.png'),
     path.join(__dirname, '..', 'build', 'icon.ico'),
+    path.join(process.resourcesPath, 'public', 'gchat_icon.png'),
     path.join(process.resourcesPath, 'icon.ico'),
   ];
 

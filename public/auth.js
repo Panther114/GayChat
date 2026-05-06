@@ -11,6 +11,18 @@ async function fetchCsrfToken() {
 }
 fetchCsrfToken();
 
+async function redirectIfAuthenticated() {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      window.location.replace('chat.html');
+    }
+  } catch {
+    // Stay on the login page when the session check fails.
+  }
+}
+redirectIfAuthenticated();
+
 function authHeaders() {
   const h = { 'Content-Type': 'application/json' };
   if (csrfToken) h['X-CSRF-Token'] = csrfToken;
@@ -47,12 +59,13 @@ document.getElementById('signin-form').addEventListener('submit', async (e) => {
 
   const username = document.getElementById('signin-username').value.trim();
   const password = document.getElementById('signin-password').value;
+  const rememberMe = document.getElementById('signin-remember').checked;
 
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, rememberMe }),
     });
     const data = await res.json();
     if (!res.ok) {

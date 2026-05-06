@@ -1,29 +1,29 @@
-# Gchat Desktop — Windows Installation Guide
+# Gchat Desktop — Windows Setup Guide
 
-Gchat Desktop is a Windows-focused Electron wrapper for the hosted Gchat web app. It keeps the same chat UI after setup, then adds desktop-native features such as system tray support, launch-at-startup, native notifications, unread badge overlays, and automatic GitHub-based updates.
-
----
-
-## What the desktop app now does
-
-- Runs as a **Windows desktop app** with the same interface as the web version after setup
-- Opens a **first-run setup wizard** instead of asking users to run console commands
-- Stays **locked to the official Railway deployment**: `https://gchat.up.railway.app`
-- Requires an **online connection** at startup and during use
-- Can **optionally launch when Windows boots**
-- **Downloads updates automatically** from GitHub Releases and asks before restarting to install
+Gchat Desktop is a Windows wrapper for the hosted Gchat web app. It keeps the same chat experience and adds desktop features like tray support, native notifications, startup launch, and automatic updates.
 
 ---
 
-## Option A — Download a packaged Windows build
+## What the desktop app does
 
-If a maintainer has published a release:
+- Uses the same hosted Gchat service after setup
+- Opens a short **first-run setup wizard**
+- Always connects to **`https://gchat.up.railway.app`**
+- Requires an **internet connection**
+- Can **launch with Windows**
+- **Downloads updates automatically** and asks before restart
+
+---
+
+## Option A — Install the packaged Windows build
+
+If a release is available:
 
 1. Open the repository **[Releases](../../releases)** page.
 2. Download **`Gchat Setup <version>.exe`**.
 3. Double-click the installer.
-4. On first launch, complete the built-in setup wizard.
-5. After setup finishes, the app opens the hosted Gchat sign-in page.
+4. Complete the built-in setup steps on first launch.
+5. Gchat opens the hosted sign-in page.
 
 > **Windows SmartScreen warning**: If Windows shows “Windows protected your PC”, click **More info → Run anyway**. This happens because the executable is not code-signed yet.
 
@@ -45,21 +45,21 @@ cd Gchat
 npm install --include=dev
 ```
 
-### 3. Launch the desktop app in development
+### 3. Launch the desktop app
 
 ```bash
 npm run electron
 ```
 
-The desktop shell will show the first-run setup wizard, then connect to the hosted Railway deployment.
+The desktop app will show the setup wizard and then open the hosted Railway deployment.
 
-### 4. Build the Windows packages
+### 4. Build the Windows package
 
 ```bash
 npm run build:win
 ```
 
-This outputs Windows packages in `dist/`:
+This creates Windows output in `dist/`:
 
 | File | Description |
 |---|---|
@@ -68,15 +68,15 @@ This outputs Windows packages in `dist/`:
 
 ---
 
-## First-run setup wizard
+## First-run setup
 
-The first time Gchat Desktop launches, it walks the user through a guided setup flow:
+The first time Gchat Desktop launches, it walks through:
 
-1. **Welcome + privacy summary** — explains encryption, hosted usage, and desktop behavior.
-2. **Connection check** — verifies that `https://gchat.up.railway.app` is reachable.
-3. **Notification permission** — prompts for native Windows alerts.
-4. **Startup preference** — lets the user choose whether Gchat launches when Windows boots.
-5. **Finish** — saves the desktop settings and opens the hosted sign-in page.
+1. **Welcome** — quick overview of the desktop app.
+2. **Connection check** — confirms that `https://gchat.up.railway.app` is reachable.
+3. **Notifications** — optionally enables native Windows alerts.
+4. **Startup preference** — chooses whether Gchat opens with Windows.
+5. **Finish** — saves settings and opens sign in.
 
 The wizard only has to be completed once per Windows user profile.
 
@@ -87,15 +87,15 @@ The wizard only has to be completed once per Windows user profile.
 This desktop build is intentionally **not configurable** for self-hosting.
 
 - The app always targets: `https://gchat.up.railway.app`
-- The URL is locked so support and setup stay simple
+- The URL is locked so setup stays simple
 - There is **no offline mode** in the desktop shell
 - If the hosted app is unreachable, Gchat shows a retry screen until the connection returns
 
 ---
 
-## Auto-launch at startup
+## Launch at startup
 
-The first-run wizard includes a **Launch Gchat at startup** choice.
+The setup wizard includes a **Launch Gchat at startup** choice.
 
 - If enabled, Gchat starts with Windows and restores the desktop shell.
 - If disabled, users can still launch it manually whenever they want.
@@ -106,7 +106,7 @@ The chosen value is saved in the local Electron config under `%APPDATA%\Gchat\co
 
 ## Notifications
 
-If notifications are allowed during setup:
+If notifications are allowed:
 
 - new messages can trigger **native Windows notifications**
 - clicking a notification brings Gchat to the front
