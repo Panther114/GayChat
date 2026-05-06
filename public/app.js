@@ -1184,7 +1184,8 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, opt
     if (msg.whisperTo) {
       try { recipients = JSON.parse(msg.whisperTo); } catch { recipients = msg.whisperTo.split(','); }
     }
-    if (!isOwn && !recipients.includes(currentUser.id)) return null;
+    const normalizedRecipients = recipients.map((id) => String(id));
+    if (!isOwn && !normalizedRecipients.includes(String(currentUser.id))) return null;
   }
 
   const row = document.createElement('div');
@@ -2445,7 +2446,7 @@ function setupEventListeners() {
     const picker = document.createElement('input');
     picker.type = 'color';
     picker.value = (currentGroupData && currentGroupData.groupColor) || '#4a90d9';
-    picker.addEventListener('input', async (e) => {
+    picker.addEventListener('change', async (e) => {
       const groupColor = e.target.value;
       const res = await fetch('/api/groups/' + currentGroupId + '/settings', {
         method: 'PATCH', headers: apiHeaders(),
