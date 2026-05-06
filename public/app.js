@@ -1023,7 +1023,13 @@ async function updateGroupPreviewFromMessage(groupId, msg) {
 
 function applyCurrentUserReadState(msg) {
   if (!msg) return;
-  msg.hasRead = msg.senderId === currentUser.id;
+  if (msg.senderId === currentUser.id) {
+    msg.hasRead = true;
+    return;
+  }
+  if (typeof msg.hasRead !== 'boolean') {
+    msg.hasRead = false;
+  }
 }
 
 function updateUnreadBadge(groupId, count) {
