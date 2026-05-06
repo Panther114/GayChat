@@ -362,9 +362,234 @@ const SCROLL_LOAD_THRESHOLD = 1;
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const messagesArea = () => $('messages-area');
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const ICON_SPECS = {
+  plus: [
+    ['path', { d: 'M12 5v14' }],
+    ['path', { d: 'M5 12h14' }],
+  ],
+  'log-in': [
+    ['path', { d: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4' }],
+    ['polyline', { points: '10 17 15 12 10 7' }],
+    ['line', { x1: '15', y1: '12', x2: '3', y2: '12' }],
+  ],
+  'log-out': [
+    ['path', { d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' }],
+    ['polyline', { points: '16 17 21 12 16 7' }],
+    ['line', { x1: '21', y1: '12', x2: '9', y2: '12' }],
+  ],
+  menu: [
+    ['line', { x1: '4', y1: '6', x2: '20', y2: '6' }],
+    ['line', { x1: '4', y1: '12', x2: '20', y2: '12' }],
+    ['line', { x1: '4', y1: '18', x2: '20', y2: '18' }],
+  ],
+  'panel-right': [
+    ['rect', { x: '3', y: '4', width: '18', height: '16', rx: '2' }],
+    ['line', { x1: '15', y1: '4', x2: '15', y2: '20' }],
+  ],
+  info: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['line', { x1: '12', y1: '16', x2: '12', y2: '12' }],
+    ['line', { x1: '12', y1: '8', x2: '12.01', y2: '8' }],
+  ],
+  'arrow-up': [
+    ['line', { x1: '12', y1: '19', x2: '12', y2: '5' }],
+    ['polyline', { points: '5 12 12 5 19 12' }],
+  ],
+  'refresh-cw': [
+    ['polyline', { points: '23 4 23 10 17 10' }],
+    ['polyline', { points: '1 20 1 14 7 14' }],
+    ['path', { d: 'M3.51 9a9 9 0 0 1 14.13-3.36L23 10' }],
+    ['path', { d: 'M20.49 15a9 9 0 0 1-14.13 3.36L1 14' }],
+  ],
+  x: [
+    ['line', { x1: '18', y1: '6', x2: '6', y2: '18' }],
+    ['line', { x1: '6', y1: '6', x2: '18', y2: '18' }],
+  ],
+  megaphone: [
+    ['path', { d: 'M3 11v2' }],
+    ['path', { d: 'M6 10v4' }],
+    ['path', { d: 'M11 5l8 4v6l-8 4Z' }],
+    ['path', { d: 'M6 14l1.5 5' }],
+  ],
+  smile: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M8 14s1.5 2 4 2 4-2 4-2' }],
+    ['line', { x1: '9', y1: '9', x2: '9.01', y2: '9' }],
+    ['line', { x1: '15', y1: '9', x2: '15.01', y2: '9' }],
+  ],
+  paperclip: [
+    ['path', { d: 'M21.44 11.05l-8.49 8.49a6 6 0 0 1-8.49-8.49l8.49-8.48a4 4 0 1 1 5.66 5.65l-8.49 8.49a2 2 0 1 1-2.83-2.83l7.78-7.78' }],
+  ],
+  send: [
+    ['line', { x1: '22', y1: '2', x2: '11', y2: '13' }],
+    ['polygon', { points: '22 2 15 22 11 13 2 9 22 2' }],
+  ],
+  'message-square': [
+    ['path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z' }],
+  ],
+  pencil: [
+    ['path', { d: 'M12 20h9' }],
+    ['path', { d: 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z' }],
+  ],
+  copy: [
+    ['rect', { x: '9', y: '9', width: '13', height: '13', rx: '2' }],
+    ['path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }],
+  ],
+  'key-round': [
+    ['circle', { cx: '7.5', cy: '15.5', r: '5.5' }],
+    ['path', { d: 'M21 2l-9.6 9.6' }],
+    ['path', { d: 'M15.5 7.5 17 9' }],
+    ['path', { d: 'M18 5l1.5 1.5' }],
+  ],
+  key: [
+    ['circle', { cx: '7.5', cy: '15.5', r: '5.5' }],
+    ['path', { d: 'M13 15.5h8' }],
+    ['path', { d: 'M16 12.5v6' }],
+  ],
+  lock: [
+    ['rect', { x: '5', y: '11', width: '14', height: '10', rx: '2' }],
+    ['path', { d: 'M8 11V8a4 4 0 1 1 8 0v3' }],
+  ],
+  unlock: [
+    ['rect', { x: '5', y: '11', width: '14', height: '10', rx: '2' }],
+    ['path', { d: 'M8 11V8a4 4 0 0 1 7.5-2' }],
+  ],
+  search: [
+    ['circle', { cx: '11', cy: '11', r: '7' }],
+    ['line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }],
+  ],
+  download: [
+    ['path', { d: 'M12 3v12' }],
+    ['polyline', { points: '7 10 12 15 17 10' }],
+    ['path', { d: 'M5 21h14' }],
+  ],
+  'alert-triangle': [
+    ['path', { d: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z' }],
+    ['line', { x1: '12', y1: '9', x2: '12', y2: '13' }],
+    ['line', { x1: '12', y1: '17', x2: '12.01', y2: '17' }],
+  ],
+  'door-open': [
+    ['path', { d: 'M13 4h6a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-6' }],
+    ['path', { d: 'M3 12h13' }],
+    ['polyline', { points: '8 7 3 12 8 17' }],
+  ],
+  'trash-2': [
+    ['path', { d: 'M3 6h18' }],
+    ['path', { d: 'M8 6V4h8v2' }],
+    ['path', { d: 'M19 6l-1 14H6L5 6' }],
+    ['line', { x1: '10', y1: '11', x2: '10', y2: '17' }],
+    ['line', { x1: '14', y1: '11', x2: '14', y2: '17' }],
+  ],
+  keyboard: [
+    ['rect', { x: '2', y: '5', width: '20', height: '14', rx: '2' }],
+    ['path', { d: 'M6 9h.01M10 9h.01M14 9h.01M18 9h.01M8 13h.01M12 13h.01M16 13h.01M8 17h8' }],
+  ],
+  user: [
+    ['path', { d: 'M20 21a8 8 0 0 0-16 0' }],
+    ['circle', { cx: '12', cy: '7', r: '4' }],
+  ],
+  reply: [
+    ['polyline', { points: '9 17 4 12 9 7' }],
+    ['path', { d: 'M20 18v-2a4 4 0 0 0-4-4H4' }],
+  ],
+  check: [
+    ['polyline', { points: '20 6 9 17 4 12' }],
+  ],
+  'chevrons-down': [
+    ['polyline', { points: '7 6 12 11 17 6' }],
+    ['polyline', { points: '7 13 12 18 17 13' }],
+  ],
+};
+
+function createIcon(name) {
+  const spec = ICON_SPECS[name];
+  if (!spec) return document.createTextNode('');
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('ui-icon');
+  for (const [tag, attrs] of spec) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    svg.appendChild(node);
+  }
+  return svg;
+}
+
+function setElementIcon(el, name, options = {}) {
+  if (!el) return;
+  const { iconOnly = false, position = 'start', label } = options;
+  const resolvedLabel = label ?? (el.dataset.iconLabel || el.textContent.trim());
+  el.replaceChildren();
+  if (!iconOnly && position === 'start') el.appendChild(createIcon(name));
+  if (!iconOnly && resolvedLabel) {
+    const text = document.createElement('span');
+    text.className = 'icon-label';
+    text.textContent = resolvedLabel;
+    el.appendChild(text);
+  }
+  if (!iconOnly && position === 'end') el.appendChild(createIcon(name));
+  if (iconOnly) el.appendChild(createIcon(name));
+  el.classList.add('has-icon');
+  el.classList.toggle('icon-only', iconOnly);
+}
+
+function applyStaticIcons() {
+  document.querySelectorAll('[data-icon]').forEach((el) => {
+    setElementIcon(el, el.dataset.icon, {
+      iconOnly: el.dataset.iconOnly === 'true',
+      position: el.dataset.iconPosition || 'start',
+    });
+  });
+}
+
+function isMobileLayout() {
+  return window.innerWidth <= 768;
+}
+
+function updateMobilePanelOverlay() {
+  const isOpen = $('sidebar').classList.contains('open') || $('right-panel').classList.contains('open');
+  $('sidebar-overlay').hidden = !isMobileLayout() || !isOpen;
+}
+
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  updateMobilePanelOverlay();
+}
+
+function closeRightPanel() {
+  $('right-panel').classList.remove('open');
+  updateMobilePanelOverlay();
+}
+
+function closeMobilePanels() {
+  closeSidebar();
+  closeRightPanel();
+}
+
+function toggleSidebar() {
+  if (!isMobileLayout()) return;
+  const sidebar = $('sidebar');
+  const opening = !sidebar.classList.contains('open');
+  closeRightPanel();
+  if (opening) sidebar.classList.add('open');
+  updateMobilePanelOverlay();
+}
+
+function toggleRightPanel() {
+  if (!isMobileLayout()) return;
+  const panel = $('right-panel');
+  const opening = !panel.classList.contains('open');
+  closeSidebar();
+  if (opening) panel.classList.add('open');
+  updateMobilePanelOverlay();
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  applyStaticIcons();
   await fetchCsrfToken();
   try {
     const res = await fetch('/api/auth/me');
@@ -394,6 +619,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupEmojiPicker();
   setupKeyboardShortcuts();
+  updateWhisperBtn();
+  toggleEncryptionButton();
+  updateMobilePanelOverlay();
 
   // Request permission to show native OS notifications
   requestNotificationPermission();
@@ -417,6 +645,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') observeCurrentGroupRowsForRead();
+  });
+  window.addEventListener('resize', () => {
+    if (!isMobileLayout()) {
+      $('sidebar').classList.remove('open');
+      $('right-panel').classList.remove('open');
+    }
+    updateMobilePanelOverlay();
   });
 });
 
@@ -558,8 +793,8 @@ async function selectGroup(groupId) {
   await loadMembers(groupId);
   observeCurrentGroupRowsForRead();
 
-  // Close mobile sidebar
-  if (window.innerWidth <= 768) closeSidebar();
+  // Close mobile panels
+  if (isMobileLayout()) closeMobilePanels();
 }
 
 function updateKeyState() {
@@ -679,7 +914,8 @@ function renderMembersList() {
       const kickBtn = document.createElement('button');
       kickBtn.className = 'member-kick-btn';
       kickBtn.title = 'Kick member';
-      kickBtn.textContent = '✕';
+      kickBtn.setAttribute('aria-label', 'Kick member');
+      setElementIcon(kickBtn, 'x', { iconOnly: true });
       kickBtn.addEventListener('click', (e) => { e.stopPropagation(); kickMember(m.id, m.username); });
       li.appendChild(kickBtn);
     }
@@ -774,7 +1010,7 @@ async function buildMessageRow(msg) {
   if (msg.type === 'whisper') {
     const wl = document.createElement('span');
     wl.className = 'whisper-label';
-    wl.textContent = '🤫 Whisper' + (msg.whisperTo ? ' (private)' : '');
+    wl.textContent = 'Whisper' + (msg.whisperTo ? ' (private)' : '');
     bubble.appendChild(wl);
   }
 
@@ -857,7 +1093,7 @@ async function renderMsgContent(msg, textEl, bubble) {
     if (!key) {
       const locked = document.createElement('div');
       locked.className = 'msg-image-locked';
-      locked.textContent = '🔒';
+      locked.appendChild(createIcon('lock'));
       bubble.appendChild(locked);
     } else {
       const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
@@ -878,7 +1114,7 @@ async function renderMsgContent(msg, textEl, bubble) {
       } else {
         const locked = document.createElement('div');
         locked.className = 'msg-image-locked';
-        locked.textContent = '🔒';
+        locked.appendChild(createIcon('lock'));
         bubble.appendChild(locked);
       }
     }
@@ -887,13 +1123,16 @@ async function renderMsgContent(msg, textEl, bubble) {
 
   if (msg.type === 'file') {
     if (!key) {
-      textEl.textContent = '🔒 ' + (msg.filename || 'file');
+      textEl.textContent = 'Locked: ' + (msg.filename || 'file');
     } else {
       const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
       if (buf) {
         const btn = document.createElement('a');
         btn.className = 'msg-file-btn';
-        btn.innerHTML = '<span class="msg-file-icon">📎</span>';
+        const fileIcon = document.createElement('span');
+        fileIcon.className = 'msg-file-icon';
+        fileIcon.appendChild(createIcon('paperclip'));
+        btn.appendChild(fileIcon);
         const info = document.createElement('span');
         info.textContent = msg.filename || 'file';
         btn.appendChild(info);
@@ -907,7 +1146,7 @@ async function renderMsgContent(msg, textEl, bubble) {
         });
         bubble.appendChild(btn);
       } else {
-        textEl.textContent = '🔒 ' + (msg.filename || 'file');
+        textEl.textContent = 'Locked: ' + (msg.filename || 'file');
       }
     }
     return;
@@ -1082,14 +1321,14 @@ async function doSend(text) {
   const now = Date.now();
   clientRateLimiter.times = clientRateLimiter.times.filter(t => now - t < 3000);
   if (clientRateLimiter.times.length >= 5) {
-    showToast('⚠️ Sending too fast, slow down', 'error');
+    showToast('Sending too fast, slow down', 'error');
     return;
   }
   // Repeated message check
   if (text === clientRateLimiter.lastContent) {
     clientRateLimiter.repeatCount = (clientRateLimiter.repeatCount || 0) + 1;
     if (clientRateLimiter.repeatCount >= 3) {
-      showToast("⚠️ Don't send the same message repeatedly", 'error');
+      showToast("Don't send the same message repeatedly", 'error');
       return;
     }
   } else {
@@ -1350,7 +1589,7 @@ function initSocket() {
 
   socket.on('member_joined', ({ userId, username, iconColor, groupId }) => {
     if (groupId !== currentGroupId) return;
-    addSystemMessage('👋 ' + username + ' joined the group');
+    addSystemMessage(username + ' joined the group');
     if (!members.find(m => m.id === userId)) {
       members.push({ id: userId, username, iconColor });
       renderMembersList();
@@ -1361,7 +1600,7 @@ function initSocket() {
 
   socket.on('member_left', ({ userId, username, groupId }) => {
     if (groupId !== currentGroupId) return;
-    addSystemMessage('👋 ' + username + ' left the group');
+    addSystemMessage(username + ' left the group');
     members = members.filter(m => m.id !== userId);
     renderMembersList();
     renderWhisperPicker();
@@ -1511,20 +1750,28 @@ function autoResizeTextarea(el) {
 function updateWhisperBtn() {
   const btn = $('whisper-mode-btn');
   if (messageMode === 'whisper') {
-    btn.textContent = '🤫';
+    setElementIcon(btn, 'message-square', { iconOnly: true });
     btn.classList.add('whisper-active');
     $('whisper-picker').hidden = false;
   } else {
-    btn.textContent = '📢';
+    setElementIcon(btn, 'megaphone', { iconOnly: true });
     btn.classList.remove('whisper-active');
     $('whisper-picker').hidden = true;
   }
 }
 
 // ── Toggle encryption display ─────────────────────────────────────────────────
+function toggleEncryptionButton() {
+  setElementIcon(
+    $('enc-toggle-btn'),
+    encryptionVisible ? 'lock' : 'unlock',
+    { label: encryptionVisible ? 'Hide Encryption' : 'Show Encrypted' }
+  );
+}
+
 async function toggleEncryption() {
   encryptionVisible = !encryptionVisible;
-  $('enc-toggle-btn').textContent = encryptionVisible ? '🔒 Hide Encryption' : '🔓 Show Encrypted';
+  toggleEncryptionButton();
   // Re-render all messages
   if (!currentGroupId) return;
   await loadMessages(currentGroupId);
@@ -1539,7 +1786,7 @@ function forgetKey() {
       clearGroupKey(currentGroupId);
       updateKeyState();
       await loadMessages(currentGroupId);
-      showToast('🗝 Key forgotten — messages are now locked', 'info');
+      showToast('Key forgotten — messages are now locked', 'info');
     }
   );
 }
@@ -1797,7 +2044,7 @@ function setupEventListeners() {
     groups.unshift(d);
     renderGroupList();
     await selectGroup(d.id);
-    addSystemMessage('🎉 Group "' + d.name + '" created!');
+    addSystemMessage('Group "' + d.name + '" created.');
   });
 
   // Join group
@@ -1820,7 +2067,7 @@ function setupEventListeners() {
     $('join-modal').hidden = true;
     if (!groups.find(g => g.id === d.id)) { groups.unshift(d); renderGroupList(); }
     await selectGroup(d.id);
-    addSystemMessage('👋 You joined "' + d.name + '"!');
+    addSystemMessage('You joined "' + d.name + '".');
   });
 
   // Set group key
@@ -1849,8 +2096,8 @@ function setupEventListeners() {
   $('copy-code-btn').addEventListener('click', () => {
     if (!currentGroupData) return;
     navigator.clipboard.writeText(currentGroupData.code).catch(() => {});
-    $('copy-code-btn').textContent = '✅';
-    setTimeout(() => $('copy-code-btn').textContent = '📋', 1500);
+    setElementIcon($('copy-code-btn'), 'check', { iconOnly: true });
+    setTimeout(() => setElementIcon($('copy-code-btn'), 'copy', { iconOnly: true }), 1500);
   });
 
   // Edit group name
@@ -1936,7 +2183,8 @@ function setupEventListeners() {
         $('chat-empty').hidden = false;
         $('right-panel-content').hidden = true;
         $('right-panel-empty').hidden = false;
-        showToast('🚪 Left group', 'success');
+        closeRightPanel();
+        showToast('Left group', 'success');
       } else {
         const d = await res.json().catch(() => ({}));
         showToast(d.error || 'Failed', 'error');
@@ -2091,26 +2339,17 @@ function setupEventListeners() {
   });
 
   // Right panel toggle (mobile)
-  $('right-panel-toggle').addEventListener('click', () => {
-    $('right-panel').classList.toggle('open');
-  });
+  $('right-panel-toggle').addEventListener('click', toggleRightPanel);
 
   // Mobile empty state toggles
-  $('sidebar-toggle-empty').addEventListener('click', () => {
-    $('sidebar').classList.toggle('open');
-    $('sidebar-overlay').hidden = !$('sidebar').classList.contains('open');
-  });
+  $('sidebar-toggle-empty').addEventListener('click', toggleSidebar);
 
-  $('right-panel-toggle-empty').addEventListener('click', () => {
-    $('right-panel').classList.toggle('open');
-  });
+  $('right-panel-toggle-empty').addEventListener('click', toggleRightPanel);
 
   // Mobile sidebar
-  $('sidebar-toggle').addEventListener('click', () => {
-    $('sidebar').classList.toggle('open');
-    $('sidebar-overlay').hidden = !$('sidebar').classList.contains('open');
-  });
-  $('sidebar-overlay').addEventListener('click', closeSidebar);
+  $('sidebar-toggle').addEventListener('click', toggleSidebar);
+  $('right-panel-close').addEventListener('click', closeRightPanel);
+  $('sidebar-overlay').addEventListener('click', closeMobilePanels);
 
   // Search
   $('search-input').addEventListener('input', (e) => searchMessages(e.target.value));
@@ -2180,9 +2419,4 @@ async function loadOlderMessages() {
     loadingOlder = false;
     if (indicator) indicator.hidden = true;
   }
-}
-
-function closeSidebar() {
-  $('sidebar').classList.remove('open');
-  $('sidebar-overlay').hidden = true;
 }

@@ -22,20 +22,20 @@
       <div class="empty-groups" id="empty-groups">No groups yet.<br>Create or join one below!</div>
     </nav>
     <div class="sidebar-actions">
-      <button class="btn-action" id="new-group-btn">＋ New Group</button>
-      <button class="btn-action" id="join-group-btn">⤵ Join Group</button>
+      <button class="btn-action" id="new-group-btn" data-icon="plus">New Group</button>
+      <button class="btn-action" id="join-group-btn" data-icon="log-in">Join Group</button>
     </div>
     <div class="sidebar-user" id="sidebar-user-btn">
       <div class="avatar" id="user-avatar" style="background:#4A90D9">?</div>
       <span class="sidebar-username" id="user-username">Loading…</span>
-      <button class="btn-icon logout-btn" id="logout-btn" title="Logout">⏏</button>
+      <button class="btn-icon logout-btn" id="logout-btn" title="Logout" aria-label="Logout" data-icon="log-out" data-icon-only="true"></button>
     </div>
   </aside>
 
   <main class="chat-panel" id="chat-panel">
     <div class="chat-empty" id="chat-empty">
-      <button class="btn-icon sidebar-toggle mobile-only-toggle" id="sidebar-toggle-empty" title="Menu">☰</button>
-      <button class="btn-icon right-panel-toggle mobile-only-toggle" id="right-panel-toggle-empty" title="Groups">📋</button>
+      <button class="btn-icon sidebar-toggle mobile-only-toggle" id="sidebar-toggle-empty" title="Menu" aria-label="Menu" data-icon="menu" data-icon-only="true"></button>
+      <button class="btn-icon right-panel-toggle mobile-only-toggle" id="right-panel-toggle-empty" title="Group details" aria-label="Group details" data-icon="panel-right" data-icon-only="true"></button>
       <img class="chat-empty-icon" src="gchat_icon.png" alt="GChat logo" />
       <p class="chat-empty-title">Select a group to start chatting</p>
       <p class="chat-empty-sub">Your messages are end-to-end encrypted</p>
@@ -43,24 +43,24 @@
 
     <div class="chat-active" id="chat-active" hidden>
       <div class="chat-topbar">
-        <button class="btn-icon sidebar-toggle" id="sidebar-toggle" title="Menu">☰</button>
+        <button class="btn-icon sidebar-toggle" id="sidebar-toggle" title="Menu" aria-label="Menu" data-icon="menu" data-icon-only="true"></button>
         <div class="chat-topbar-info">
           <span class="chat-topbar-name" id="chat-group-name">Group Name</span>
           <span class="chat-topbar-meta" id="chat-member-count">0 members</span>
         </div>
-        <button class="btn-icon right-panel-toggle" id="right-panel-toggle" title="Info">ℹ</button>
+        <button class="btn-icon right-panel-toggle" id="right-panel-toggle" title="Group details" aria-label="Group details" data-icon="info" data-icon-only="true"></button>
       </div>
 
-      <button class="unread-jump-btn" id="unread-jump-btn" hidden>⬆ Go to first unread</button>
+      <button class="unread-jump-btn" id="unread-jump-btn" hidden data-icon="arrow-up">Go to first unread</button>
 
-      <div class="reconnect-banner" id="reconnect-banner" hidden>🔄 Reconnecting…</div>
+      <div class="reconnect-banner" id="reconnect-banner" hidden data-icon="refresh-cw">Reconnecting…</div>
 
       <div class="messages-area" id="messages-area">
         <div class="load-more-indicator" id="load-more-indicator" hidden>Loading older messages…</div>
       </div>
 
-      <button class="scroll-bottom-btn" id="scroll-bottom-btn" hidden>
-        ↓<span class="scroll-unread-badge" id="scroll-unread-badge" hidden>0</span>
+      <button class="scroll-bottom-btn" id="scroll-bottom-btn" hidden aria-label="Scroll to latest messages">
+        <span class="scroll-bottom-icon" data-icon="chevrons-down" data-icon-only="true" aria-hidden="true"></span><span class="scroll-unread-badge" id="scroll-unread-badge" hidden>0</span>
       </button>
 
       <div class="typing-indicator" id="typing-indicator" hidden>
@@ -73,14 +73,14 @@
           <span class="reply-preview-name" id="reply-preview-name"></span>
           <span class="reply-preview-text" id="reply-preview-text"></span>
         </div>
-        <button class="reply-cancel-btn" id="reply-cancel-btn">✕</button>
+        <button class="reply-cancel-btn" id="reply-cancel-btn" aria-label="Cancel reply" data-icon="x" data-icon-only="true"></button>
       </div>
 
       <div class="message-input-bar" id="message-input-bar">
-        <button class="btn-icon btn-whisper-mode" id="whisper-mode-btn" title="Message mode">📢</button>
-        <button class="btn-icon btn-emoji" id="emoji-btn" title="Emoji">😊</button>
+        <button class="btn-icon btn-whisper-mode" id="whisper-mode-btn" title="Message mode" aria-label="Message mode"></button>
+        <button class="btn-icon btn-emoji" id="emoji-btn" title="Emoji" aria-label="Emoji" data-icon="smile" data-icon-only="true"></button>
         <label class="btn-icon btn-attach" title="Attach file">
-          📎<input type="file" id="file-input" accept="*/*" hidden />
+          <span class="attach-icon" data-icon="paperclip" data-icon-only="true" aria-hidden="true"></span><input type="file" id="file-input" accept="*/*" hidden />
         </label>
         <textarea
           id="message-input"
@@ -88,11 +88,11 @@
           autocomplete="off"
           rows="1"
         ></textarea>
-        <button class="btn-send" id="send-btn" title="Send">➤</button>
+        <button class="btn-send" id="send-btn" title="Send" aria-label="Send" data-icon="send" data-icon-only="true"></button>
       </div>
 
       <div class="whisper-picker" id="whisper-picker" hidden>
-        <div class="whisper-picker-header">🤫 Whisper to:</div>
+        <div class="whisper-picker-header" data-icon="message-square">Whisper to:</div>
         <div class="whisper-picker-list" id="whisper-picker-list"></div>
       </div>
 
@@ -102,10 +102,11 @@
   </main>
 
   <aside class="right-panel" id="right-panel">
+    <button class="btn-icon mobile-panel-close" id="right-panel-close" title="Close details" aria-label="Close details" data-icon="x" data-icon-only="true"></button>
     <div class="right-panel-inner" id="right-panel-content" hidden>
       <div class="right-panel-group-name-row">
         <h3 class="right-panel-title" id="right-group-name">Group</h3>
-        <button class="btn-edit-name" id="edit-group-name-btn" title="Rename group">✏️</button>
+        <button class="btn-edit-name" id="edit-group-name-btn" title="Rename group" aria-label="Rename group" data-icon="pencil" data-icon-only="true"></button>
       </div>
       <div id="edit-group-name-form" hidden>
         <input type="text" id="edit-group-name-input" placeholder="New group name" />
@@ -114,16 +115,17 @@
       </div>
       <div class="right-panel-code">
         <span>Code: </span><strong id="right-group-code">—</strong>
-        <button class="btn-copy" id="copy-code-btn" title="Copy code">📋</button>
+        <button class="btn-copy" id="copy-code-btn" title="Copy code" aria-label="Copy code" data-icon="copy" data-icon-only="true"></button>
       </div>
       <div class="right-panel-actions">
-        <button class="btn-action-sm btn-set-key" id="set-key-btn">🔑 Set Key</button>
-        <button class="btn-action-sm btn-enc-toggle" id="enc-toggle-btn">🔒 Hide Encryption</button>
-        <button class="btn-action-sm btn-forget-key" id="forget-key-btn">🗝 Forget Key</button>
+        <button class="btn-action-sm btn-set-key" id="set-key-btn" data-icon="key-round">Set Key</button>
+        <button class="btn-action-sm btn-enc-toggle" id="enc-toggle-btn">Hide Encryption</button>
+        <button class="btn-action-sm btn-forget-key" id="forget-key-btn" data-icon="key">Forget Key</button>
       </div>
       <div class="search-bar">
-        <input type="text" id="search-input" placeholder="🔍 Search messages" />
-        <button class="btn-clear-search" id="clear-search-btn">✕</button>
+        <span class="search-icon" data-icon="search" data-icon-only="true" aria-hidden="true"></span>
+        <input type="text" id="search-input" placeholder="Search messages" />
+        <button class="btn-clear-search" id="clear-search-btn" aria-label="Clear search" data-icon="x" data-icon-only="true"></button>
         <span class="search-results-count" id="search-results-count"></span>
       </div>
       <h4 class="members-title">Members</h4>
@@ -133,14 +135,14 @@
           <input type="checkbox" id="allow-member-clear-toggle" />
           Allow members to clear history
         </label>
-        <button class="btn-action-sm btn-export" id="export-btn">📥 Export Chat (TXT)</button>
-        <button class="btn-disband" id="disband-btn">⚠ Disband Group</button>
+        <button class="btn-action-sm btn-export" id="export-btn" data-icon="download">Export Chat (TXT)</button>
+        <button class="btn-disband" id="disband-btn" data-icon="alert-triangle">Disband Group</button>
       </div>
       <div class="right-panel-member-actions" id="member-actions" hidden>
-        <button class="btn-action-sm btn-leave" id="leave-group-btn">🚪 Leave Group</button>
+        <button class="btn-action-sm btn-leave" id="leave-group-btn" data-icon="door-open">Leave Group</button>
       </div>
       <div class="right-panel-common-actions" id="common-actions" hidden>
-        <button class="btn-action-sm btn-clear-history" id="clear-history-btn">🗑 Clear Chat History</button>
+        <button class="btn-action-sm btn-clear-history" id="clear-history-btn" data-icon="trash-2">Clear Chat History</button>
       </div>
     </div>
     <div class="right-panel-empty" id="right-panel-empty">
@@ -185,7 +187,7 @@
 
   <div class="modal-overlay" id="group-key-modal" hidden>
     <div class="modal">
-      <h2>🔑 Set Group Key</h2>
+      <h2 data-icon="key-round">Set Group Key</h2>
       <p class="modal-desc">All messages are auto-encrypted and decrypted with this key.</p>
       <div class="form-group">
         <label>Encryption Key</label>
@@ -201,7 +203,7 @@
 
   <div class="modal-overlay" id="profile-modal" hidden>
     <div class="modal">
-      <h2>👤 Profile</h2>
+      <h2 data-icon="user">Profile</h2>
       <div class="form-group">
         <label>Change Username</label>
         <input type="text" id="profile-username" placeholder="New username" />
@@ -238,7 +240,7 @@
       </div>
       <p class="form-error" id="profile-error"></p>
       <hr class="modal-divider" />
-      <button class="btn-danger" id="profile-delete-btn">🗑 Delete Account</button>
+      <button class="btn-danger" id="profile-delete-btn" data-icon="trash-2">Delete Account</button>
       <div class="modal-actions">
         <button class="btn-secondary" id="profile-cancel-btn">Close</button>
       </div>
@@ -258,7 +260,7 @@
 
   <div class="modal-overlay" id="shortcuts-modal" hidden>
     <div class="modal">
-      <h2>⌨️ Keyboard Shortcuts</h2>
+      <h2 data-icon="keyboard">Keyboard Shortcuts</h2>
       <table class="shortcuts-table">
         <tr><td><kbd>Enter</kbd></td><td>Send message</td></tr>
         <tr><td><kbd>Shift+Enter</kbd></td><td>New line</td></tr>
@@ -273,15 +275,15 @@
   </div>
 
   <div class="ctx-menu" id="ctx-menu" hidden>
-    <button class="ctx-item" id="ctx-reply">↩ Reply</button>
-    <button class="ctx-item" id="ctx-copy">📋 Copy Text</button>
-    <button class="ctx-item" id="ctx-edit">✏️ Edit</button>
+    <button class="ctx-item" id="ctx-reply" data-icon="reply">Reply</button>
+    <button class="ctx-item" id="ctx-copy" data-icon="copy">Copy Text</button>
+    <button class="ctx-item" id="ctx-edit" data-icon="pencil">Edit</button>
   </div>
 
   <div class="image-viewer-modal" id="image-viewer-modal" hidden>
     <div class="image-viewer-overlay" id="image-viewer-overlay"></div>
     <div class="image-viewer-container">
-      <button class="image-viewer-close" id="image-viewer-close">✕</button>
+      <button class="image-viewer-close" id="image-viewer-close" aria-label="Close image viewer" data-icon="x" data-icon-only="true"></button>
       <img class="image-viewer-img" id="image-viewer-img" src="" alt="Full size image" />
     </div>
   </div>
