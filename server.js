@@ -139,6 +139,8 @@ const migrations = [
   "ALTER TABLE messages ADD COLUMN whisper_to TEXT",
   "ALTER TABLE messages ADD COLUMN total_recipients INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE group_chats ADD COLUMN allow_member_clear INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE group_chats ADD COLUMN allow_member_export INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE group_chats ADD COLUMN group_color TEXT",
   "CREATE TABLE IF NOT EXISTS _config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   "ALTER TABLE users ADD COLUMN profile_picture TEXT",
   "ALTER TABLE messages ADD COLUMN edited_at TEXT",
@@ -191,6 +193,8 @@ const stmts = {
   findGroupById: db.prepare('SELECT * FROM group_chats WHERE id = ?'),
   updateGroupName: db.prepare('UPDATE group_chats SET name = ? WHERE id = ?'),
   updateGroupAllowMemberClear: db.prepare('UPDATE group_chats SET allow_member_clear = ? WHERE id = ?'),
+  updateGroupAllowMemberExport: db.prepare('UPDATE group_chats SET allow_member_export = ? WHERE id = ?'),
+  updateGroupColor: db.prepare('UPDATE group_chats SET group_color = ? WHERE id = ?'),
 
   // Members
   insertMember: db.prepare(
@@ -200,7 +204,7 @@ const stmts = {
     'SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?'
   ),
   getUserGroups: db.prepare(`
-    SELECT g.id, g.name, g.code, g.created_by, g.created_at, g.allow_member_clear
+    SELECT g.id, g.name, g.code, g.created_by, g.created_at, g.allow_member_clear, g.allow_member_export, g.group_color
     FROM group_chats g
     JOIN group_members gm ON g.id = gm.group_id
     WHERE gm.user_id = ?
@@ -620,6 +624,8 @@ app.post('/api/groups/create', (req, res) => {
     code: group.code,
     createdBy: group.created_by,
     allowMemberClear: group.allow_member_clear || 0,
+    allowMemberExport: group.allow_member_export || 0,
+    groupColor: group.group_color || null,
   });
 });
 
@@ -654,6 +660,8 @@ app.post('/api/groups/join', (req, res) => {
     code: group.code,
     createdBy: group.created_by,
     allowMemberClear: group.allow_member_clear || 0,
+    allowMemberExport: group.allow_member_export || 0,
+    groupColor: group.group_color || null,
   });
 });
 
@@ -667,6 +675,8 @@ app.get('/api/groups/mine', (req, res) => {
       code: g.code,
       createdBy: g.created_by,
       allowMemberClear: g.allow_member_clear || 0,
+      allowMemberExport: g.allow_member_export || 0,
+      groupColor: g.group_color || null,
     }))
   );
 });
@@ -689,11 +699,11 @@ app.patch('/api/groups/:groupId/name', (req, res) => {
   res.json({ ok: true });
 });
 
-// PATCH /api/groups/:groupId/settings — update allow_member_clear (owner only)
+// PATCH /api/groups/:groupId/settings — update group settings (owner only)
 app.patch('/api/groups/:groupId/settings', (req, res) => {
   const { groupId } = req.params;
   const userId = req.session.userId;
-  const { allowMemberClear } = req.body;
+  const { allowMemberClear, allowMemberExport, groupColor } = req.body;
 
   const group = stmts.findGroupById.get(groupId);
   if (!group) return res.status(404).json({ error: 'Group not found' });
@@ -702,6 +712,22 @@ app.patch('/api/groups/:groupId/settings', (req, res) => {
   if (allowMemberClear !== undefined) {
     stmts.updateGroupAllowMemberClear.run(allowMemberClear ? 1 : 0, groupId);
   }
+  if (allowMemberExport !== undefined) {
+    stmts.updateGroupAllowMemberExport.run(allowMemberExport ? 1 : 0, groupId);
+  }
+  if (groupColor !== undefined) {
+    if (groupColor !== null && (typeof groupColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(groupColor))) {
+      return res.status(400).json({ error: 'Invalid group color format' });
+    }
+    stmts.updateGroupColor.run(groupColor, groupId);
+  }
+  const updated = stmts.findGroupById.get(groupId);
+  io.to(groupId).emit('group_settings_updated', {
+    groupId,
+    allowMemberClear: !!updated.allow_member_clear,
+    allowMemberExport: !!updated.allow_member_export,
+    groupColor: updated.group_color || null,
+  });
   res.json({ ok: true });
 });
 

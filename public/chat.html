@@ -105,7 +105,7 @@
     <button class="btn-icon mobile-panel-close" id="right-panel-close" title="Close details" aria-label="Close details" data-icon="x" data-icon-only="true"></button>
     <div class="right-panel-inner" id="right-panel-content" hidden>
       <div class="right-panel-group-name-row">
-        <h3 class="right-panel-title" id="right-group-name">Group</h3>
+        <h3 class="right-panel-title right-panel-title-editable" id="right-group-name">Group</h3>
         <button class="btn-edit-name" id="edit-group-name-btn" title="Rename group" aria-label="Rename group" data-icon="pencil" data-icon-only="true"></button>
       </div>
       <div id="edit-group-name-form" hidden>
@@ -113,6 +113,7 @@
         <button class="btn-primary btn-sm" id="edit-group-name-save">Save</button>
         <button class="btn-secondary btn-sm" id="edit-group-name-cancel">Cancel</button>
       </div>
+      <button class="btn-action-sm btn-group-color" id="set-group-color-btn" data-icon="palette">Set Group Color</button>
       <div class="right-panel-code">
         <span>Code: </span><strong id="right-group-code">—</strong>
         <button class="btn-copy" id="copy-code-btn" title="Copy code" aria-label="Copy code" data-icon="copy" data-icon-only="true"></button>
@@ -131,18 +132,24 @@
       <h4 class="members-title">Members</h4>
       <ul class="members-list" id="members-list"></ul>
       <div class="right-panel-owner-actions" id="owner-actions" hidden>
-        <label class="toggle-label">
+        <label class="toggle-label toggle-switch-row" for="allow-member-clear-toggle">
+          <span>Members can clear</span>
           <input type="checkbox" id="allow-member-clear-toggle" />
-          Allow members to clear history
+          <span class="toggle-switch-ui" aria-hidden="true"></span>
         </label>
-        <button class="btn-action-sm btn-export" id="export-btn" data-icon="download">Export Chat (TXT)</button>
-        <button class="btn-disband" id="disband-btn" data-icon="alert-triangle">Disband Group</button>
-      </div>
-      <div class="right-panel-member-actions" id="member-actions" hidden>
-        <button class="btn-action-sm btn-leave" id="leave-group-btn" data-icon="door-open">Leave Group</button>
+        <label class="toggle-label toggle-switch-row" for="allow-member-export-toggle">
+          <span>Members can export</span>
+          <input type="checkbox" id="allow-member-export-toggle" />
+          <span class="toggle-switch-ui" aria-hidden="true"></span>
+        </label>
       </div>
       <div class="right-panel-common-actions" id="common-actions" hidden>
-        <button class="btn-action-sm btn-clear-history" id="clear-history-btn" data-icon="trash-2">Clear Chat History</button>
+        <div class="quick-actions-row">
+          <button class="btn-quick-action btn-export" id="export-btn" title="Export chat as TXT" aria-label="Export chat as TXT" data-icon="download" data-icon-only="true"></button>
+          <button class="btn-quick-action btn-clear-history" id="clear-history-btn" title="Clear chat history" aria-label="Clear chat history" data-icon="trash-2" data-icon-only="true"></button>
+          <button class="btn-quick-action btn-leave" id="leave-group-btn" title="Exit group" aria-label="Exit group" data-icon="door-open" data-icon-only="true"></button>
+          <button class="btn-quick-action btn-disband" id="disband-btn" title="Disband group" aria-label="Disband group" data-icon="alert-triangle" data-icon-only="true"></button>
+        </div>
       </div>
     </div>
     <div class="right-panel-empty" id="right-panel-empty">
@@ -203,7 +210,10 @@
 
   <div class="modal-overlay" id="profile-modal" hidden>
     <div class="modal">
-      <h2 data-icon="user">Profile</h2>
+      <div class="modal-title-row">
+        <h2 data-icon="user">Profile</h2>
+        <button class="btn-icon profile-close-btn" id="profile-close-btn" title="Close" aria-label="Close" data-icon="x" data-icon-only="true"></button>
+      </div>
       <div class="form-group">
         <label>Change Username</label>
         <input type="text" id="profile-username" placeholder="New username" />
@@ -211,15 +221,10 @@
       </div>
       <div class="form-group">
         <label>Profile Picture</label>
-        <div class="profile-picture-selector">
-          <label class="profile-picture-option">
-            <input type="radio" name="profile-picture-type" value="color" checked />
-            <span>Color + Initial</span>
-          </label>
-          <label class="profile-picture-option">
-            <input type="radio" name="profile-picture-type" value="image" />
-            <span>Upload Image</span>
-          </label>
+        <div class="profile-picture-mode">
+          <span class="profile-mode-label" id="profile-mode-color-label">Color</span>
+          <input type="range" id="profile-picture-mode-slider" min="0" max="1" step="1" value="0" />
+          <span class="profile-mode-label" id="profile-mode-image-label">Upload Image</span>
         </div>
         <div id="profile-picture-color-section">
           <label>Icon Color</label>
@@ -241,9 +246,6 @@
       <p class="form-error" id="profile-error"></p>
       <hr class="modal-divider" />
       <button class="btn-danger" id="profile-delete-btn" data-icon="trash-2">Delete Account</button>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="profile-cancel-btn">Close</button>
-      </div>
     </div>
   </div>
 
