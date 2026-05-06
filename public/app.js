@@ -520,8 +520,10 @@ function createIcon(name) {
 
 function setElementIcon(el, name, options = {}) {
   if (!el) return;
-  const { iconOnly = false, position = 'start', label } = options;
-  const resolvedLabel = label ?? (el.dataset.iconLabel || el.textContent.trim());
+  const { iconOnly = false, position = 'start' } = options;
+  const existingLabel = el.dataset.iconLabel ?? el.textContent.trim();
+  const resolvedLabel = options.label ?? existingLabel;
+  if (resolvedLabel) el.dataset.iconLabel = resolvedLabel;
   el.replaceChildren();
   if (!iconOnly && position === 'start') el.appendChild(createIcon(name));
   if (!iconOnly && resolvedLabel) {
