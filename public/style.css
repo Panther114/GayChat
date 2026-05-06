@@ -20,6 +20,7 @@
   --red:         #ff4466;
   --orange:      #ffaa33;
   --whisper-bg:  #1e1030;
+  --whisper-bg-light: #f6efff;
   --whisper-border: #7c3aed;
   --system-color: #55557a;
   --scrollbar-w: 4px;
@@ -501,7 +502,7 @@ body.chat-body {
 
 /* Whisper */
 .msg-row.whisper .msg-bubble {
-  background: #f6efff;
+  background: var(--whisper-bg-light);
   border-color: var(--whisper-border);
   border-left: 3px solid var(--whisper-border);
 }
