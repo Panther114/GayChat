@@ -328,6 +328,16 @@ function hideImageViewer() {
   img.src = '';
 }
 
+function createAvatarImage(src) {
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'cover';
+  img.style.borderRadius = '50%';
+  return img;
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentGroupId = null;
@@ -351,6 +361,97 @@ let unreadNotificationCount = 0;
 let titleBlinkInterval = null;
 let readObserver = null;
 let pendingReadMessageIds = new Set();
+const groupDataCache = new Map();
+const groupPreloadPromises = new Map();
+
+function renderCurrentUserAvatar(user = currentUser) {
+  const avatar = $('user-avatar');
+  if (!avatar || !user) return;
+  avatar.replaceChildren();
+  if (user.profilePicture) {
+    avatar.style.background = 'none';
+    avatar.appendChild(createAvatarImage(user.profilePicture));
+    return;
+  }
+  avatar.style.background = user.iconColor;
+  avatar.textContent = user.username ? user.username[0].toUpperCase() : '';
+}
+
+function getGroupCacheEntry(groupId) {
+  if (!groupDataCache.has(groupId)) {
+    groupDataCache.set(groupId, {
+      messages: null,
+      messageRows: null,
+      members: null,
+      oldestMessageId: null,
+    });
+  }
+  return groupDataCache.get(groupId);
+}
+
+function createLoadMoreIndicator() {
+  const indicator = document.createElement('div');
+  indicator.className = 'load-more-indicator';
+  indicator.id = 'load-more-indicator';
+  indicator.hidden = true;
+  indicator.textContent = 'Loading older messages…';
+  return indicator;
+}
+
+async function buildMessageRows(messages, groupId) {
+  return Promise.all(messages.map((msg) => buildMessageRow(msg, groupId)));
+}
+
+async function rebuildGroupMessageRows(groupId) {
+  const cache = getGroupCacheEntry(groupId);
+  if (!cache.messages) return;
+  cache.messageRows = await buildMessageRows(cache.messages, groupId);
+  cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
+}
+
+function renderGroupFromCache(groupId) {
+  const cache = getGroupCacheEntry(groupId);
+  const area = messagesArea();
+  if (!area) return;
+
+  area.replaceChildren(createLoadMoreIndicator());
+  if (cache.messageRows && cache.messageRows.length) {
+    for (const row of cache.messageRows) {
+      if (row) area.appendChild(row);
+    }
+  }
+
+  allMessages = cache.messages || [];
+  oldestMessageId = cache.oldestMessageId;
+  members = cache.members || [];
+  $('chat-member-count').textContent = members.length + ' member' + (members.length !== 1 ? 's' : '');
+  renderMembersList();
+  renderWhisperPicker();
+}
+
+function preloadAllGroups() {
+  for (const group of groups) {
+    void ensureGroupDataPreloaded(group.id);
+  }
+}
+
+async function ensureGroupDataPreloaded(groupId) {
+  if (groupPreloadPromises.has(groupId)) return groupPreloadPromises.get(groupId);
+  const cache = getGroupCacheEntry(groupId);
+  if (cache.messages && cache.members && cache.messageRows) return cache;
+
+  const preload = (async () => {
+    await Promise.all([loadMessages(groupId), loadMembers(groupId)]);
+    return getGroupCacheEntry(groupId);
+  })();
+
+  groupPreloadPromises.set(groupId, preload);
+  try {
+    return await preload;
+  } finally {
+    groupPreloadPromises.delete(groupId);
+  }
+}
 
 // Decryption failure text constants (must match renderMsgContent output)
 const MSG_NO_KEY = '[No key — set group key to decrypt]';
@@ -604,19 +705,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Set user display
   $('user-username').textContent = currentUser.username;
-  const ua = $('user-avatar');
-  if (currentUser.profilePicture) {
-    ua.style.background = 'none';
-    const img = document.createElement('img');
-    img.src = currentUser.profilePicture;
-    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
-    ua.appendChild(img);
-  } else {
-    ua.textContent = currentUser.username[0].toUpperCase();
-    ua.style.background = currentUser.iconColor;
-  }
+  renderCurrentUserAvatar(currentUser);
 
   await loadGroups();
+  preloadAllGroups();
   initSocket();
   setupEventListeners();
   setupEmojiPicker();
@@ -742,8 +834,6 @@ function updateUnreadBadge(groupId, count) {
 async function selectGroup(groupId) {
   currentGroupId = groupId;
   currentGroupData = groups.find(g => g.id === groupId) || null;
-  allMessages = [];
-  oldestMessageId = null;
   replyingTo = null;
   whisperRecipients = [];
   messageMode = 'normal';
@@ -790,9 +880,17 @@ async function selectGroup(groupId) {
   // Socket room
   if (socket) socket.emit('join_room', groupId);
 
-  // Load messages
-  await loadMessages(groupId);
-  await loadMembers(groupId);
+  const cache = getGroupCacheEntry(groupId);
+  if (!cache.messages || !cache.members || !cache.messageRows) {
+    messagesArea().replaceChildren(createLoadMoreIndicator());
+    members = [];
+    renderMembersList();
+    renderWhisperPicker();
+    $('chat-member-count').textContent = 'Loading…';
+    await ensureGroupDataPreloaded(groupId);
+    if (currentGroupId !== groupId) return;
+  }
+  renderGroupFromCache(groupId);
   observeCurrentGroupRowsForRead();
 
   // Close mobile panels
@@ -813,7 +911,7 @@ function updateKeyState() {
 async function loadMessages(groupId, before) {
   // Guard: prevent the scroll handler from triggering loadOlderMessages while
   // the initial (non-paginated) load is still in flight (#2).
-  if (!before) loadingOlder = true;
+  if (!before && groupId === currentGroupId) loadingOlder = true;
   try {
     const url = `/api/groups/${groupId}/messages` + (before ? `?before=${before}&limit=50` : '?limit=50');
     const res = await fetch(url);
@@ -823,12 +921,15 @@ async function loadMessages(groupId, before) {
     }
     const msgs = await res.json();
     if (!before) {
-      $('messages-area').innerHTML = '<div class="load-more-indicator" id="load-more-indicator" hidden>Loading older messages…</div>';
-      allMessages = msgs;
-
-      // Build all rows concurrently then insert via a single DocumentFragment
-      // to avoid per-row reflows during the initial load (#26).
-      const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
+      const cache = getGroupCacheEntry(groupId);
+      cache.messages = msgs;
+      cache.messageRows = await buildMessageRows(msgs, groupId);
+      cache.oldestMessageId = msgs.length > 0 ? msgs[0].id : null;
+    } else {
+      // Prepend older messages
+      const area = messagesArea();
+      const prevScrollHeight = area.scrollHeight;
+      const rows = await buildMessageRows(msgs, groupId);
       const fragment = document.createDocumentFragment();
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -836,28 +937,22 @@ async function loadMessages(groupId, before) {
         observeMessageForRead(row, msgs[i]);
         fragment.appendChild(row);
       }
-      messagesArea().appendChild(fragment);
-      scrollToBottom(true);
-    } else {
-      // Prepend older messages
-      const area = messagesArea();
-      const prevScrollHeight = area.scrollHeight;
       const oldFirst = area.querySelector('.msg-row, .msg-system');
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        const row = await buildMessageRow(msgs[i]);
-        observeMessageForRead(row, msgs[i]);
-        if (oldFirst) area.insertBefore(row, oldFirst);
-        else area.appendChild(row);
-      }
+      if (oldFirst) area.insertBefore(fragment, oldFirst);
+      else area.appendChild(fragment);
       allMessages = [...msgs, ...allMessages];
+      const cache = getGroupCacheEntry(groupId);
+      cache.messages = allMessages;
+      cache.messageRows = [...rows, ...(cache.messageRows || [])];
+      cache.oldestMessageId = msgs[0].id;
       // Restore scroll position
       area.scrollTop = area.scrollHeight - prevScrollHeight;
     }
-    if (msgs.length > 0) {
+    if (!before && groupId === currentGroupId && msgs.length > 0) {
       oldestMessageId = msgs[0].id;
     }
   } catch(err) { console.error('loadMessages error:', err); }
-  finally { if (!before) loadingOlder = false; }
+  finally { if (!before && groupId === currentGroupId) loadingOlder = false; }
 }
 
 // ── Load members ──────────────────────────────────────────────────────────────
@@ -865,10 +960,7 @@ async function loadMembers(groupId) {
   try {
     const res = await fetch(`/api/groups/${groupId}/members`);
     if (!res.ok) return;
-    members = await res.json();
-    $('chat-member-count').textContent = members.length + ' member' + (members.length !== 1 ? 's' : '');
-    renderMembersList();
-    renderWhisperPicker();
+    getGroupCacheEntry(groupId).members = await res.json();
   } catch(err) { console.error('loadMembers error:', err); }
 }
 
@@ -951,7 +1043,7 @@ function renderWhisperPicker() {
 }
 
 // ── Build & append message bubbles ────────────────────────────────────────────
-async function buildMessageRow(msg) {
+async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId) {
   const isOwn = msg.senderId === currentUser.id;
 
   // System message
@@ -1031,7 +1123,7 @@ async function buildMessageRow(msg) {
   // Message content
   const textEl = document.createElement('span');
   textEl.className = 'msg-text';
-  await renderMsgContent(msg, textEl, bubble);
+  await renderMsgContent(msg, textEl, bubble, groupId);
 
   bubble.appendChild(textEl);
 
@@ -1081,8 +1173,8 @@ async function buildMessageRow(msg) {
   return row;
 }
 
-async function renderMsgContent(msg, textEl, bubble) {
-  const key = currentGroupId ? getGroupKey(currentGroupId) : null;
+async function renderMsgContent(msg, textEl, bubble, groupId = currentGroupId) {
+  const key = groupId ? getGroupKey(groupId) : null;
 
   if (!encryptionVisible) {
     if (msg.type === 'image') textEl.textContent = '[encrypted image]';
@@ -1098,7 +1190,7 @@ async function renderMsgContent(msg, textEl, bubble) {
       locked.appendChild(createIcon('lock'));
       bubble.appendChild(locked);
     } else {
-      const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
+      const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, groupId);
       if (buf) {
         const mimeType = detectImageMime(buf) || 'image/jpeg';
         const blob = new Blob([buf], { type: mimeType });
@@ -1127,7 +1219,7 @@ async function renderMsgContent(msg, textEl, bubble) {
     if (!key) {
       textEl.textContent = 'Locked: ' + (msg.filename || 'file');
     } else {
-      const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, currentGroupId);
+      const buf = await decryptBytes(msg.encryptedContent, msg.iv, key, groupId);
       if (buf) {
         const btn = document.createElement('a');
         btn.className = 'msg-file-btn';
@@ -1160,7 +1252,7 @@ async function renderMsgContent(msg, textEl, bubble) {
     return;
   }
 
-  const plaintext = await decryptMessage(msg.encryptedContent, msg.iv, key, currentGroupId);
+  const plaintext = await decryptMessage(msg.encryptedContent, msg.iv, key, groupId);
   if (plaintext === null) {
     textEl.textContent = MSG_DECRYPT_FAIL;
   } else {
@@ -1168,8 +1260,8 @@ async function renderMsgContent(msg, textEl, bubble) {
   }
 }
 
-async function appendMessageBubble(msg, scroll) {
-  const row = await buildMessageRow(msg);
+async function appendMessageBubble(msg, scroll, groupId = currentGroupId) {
+  const row = await buildMessageRow(msg, groupId);
   if (!row) return;
 
   // Grouping: hide avatar/name for consecutive messages from same sender
@@ -1184,6 +1276,12 @@ async function appendMessageBubble(msg, scroll) {
 
   area.appendChild(row);
   observeMessageForRead(row, msg);
+  allMessages.push(msg);
+  const cache = getGroupCacheEntry(groupId);
+  cache.messages = allMessages;
+  cache.messageRows = cache.messageRows || [];
+  cache.messageRows.push(row);
+  cache.oldestMessageId = allMessages.length ? allMessages[0].id : null;
 
   // Scroll behavior
   if (scroll !== false) {
@@ -1198,6 +1296,7 @@ async function appendMessageBubble(msg, scroll) {
       row.classList.add('unread');
     }
   }
+  return row;
 }
 
 function updateScrollBadge() {
@@ -1473,6 +1572,19 @@ function initSocket() {
     }
 
     if (msg.groupId !== currentGroupId) {
+      const cache = getGroupCacheEntry(msg.groupId);
+      if (cache.messages) {
+        cache.messages.push(msg);
+        cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
+      }
+      if (cache.messageRows) {
+        const row = await buildMessageRow(msg, msg.groupId);
+        if (row) {
+          const prev = cache.messageRows[cache.messageRows.length - 1];
+          if (prev && prev.dataset && prev.dataset.senderId === msg.senderId) row.classList.add('grouped');
+          cache.messageRows.push(row);
+        }
+      }
       // Increment unread for non-active group
       unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
       updateUnreadBadge(msg.groupId, unreadCounts[msg.groupId]);
@@ -1499,7 +1611,7 @@ function initSocket() {
       }
       return;
     }
-    await appendMessageBubble(msg, true);
+    await appendMessageBubble(msg, true, msg.groupId);
     // Update preview
     const key2 = getGroupKey(msg.groupId);
     let preview2 = '[encrypted]';
@@ -1532,50 +1644,73 @@ function initSocket() {
   socket.on('message_deleted', ({ messageId }) => {
     const row = document.querySelector('[data-msg-id="' + messageId + '"]');
     if (row) row.remove();
+    for (const [groupId, cache] of groupDataCache.entries()) {
+      const index = cache.messages ? cache.messages.findIndex((msg) => msg.id === messageId) : -1;
+      if (index === -1) continue;
+      cache.messages.splice(index, 1);
+      if (cache.messageRows) cache.messageRows = cache.messageRows.filter((msgRow) => msgRow?.dataset?.msgId !== messageId);
+      cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
+      if (groupId === currentGroupId) {
+        allMessages = cache.messages;
+      }
+      break;
+    }
   });
 
   socket.on('message_edited', async ({ messageId, encryptedContent, iv, editedAt }) => {
     const row = document.querySelector('[data-msg-id="' + messageId + '"]');
-    if (!row) return;
-    const bubble = row.querySelector('.msg-bubble');
-    const textEl = row.querySelector('.msg-text');
-    if (!bubble || !textEl) return;
+    if (row) {
+      const bubble = row.querySelector('.msg-bubble');
+      const textEl = row.querySelector('.msg-text');
+      if (bubble && textEl) {
+        // Update the stored ciphertext on the bubble dataset
+        bubble.dataset.encContent = encryptedContent;
+        bubble.dataset.iv = iv;
 
-    // Update the stored ciphertext on the bubble dataset
-    bubble.dataset.encContent = encryptedContent;
-    bubble.dataset.iv = iv;
+        // Re-decrypt and update display text
+        const key = currentGroupId ? getGroupKey(currentGroupId) : null;
+        if (key) {
+          const pt = await decryptMessage(encryptedContent, iv, key, currentGroupId);
+          textEl.textContent = pt !== null ? pt : MSG_DECRYPT_FAIL;
+        } else {
+          textEl.textContent = MSG_NO_KEY;
+        }
 
-    // Re-decrypt and update display text
-    const key = currentGroupId ? getGroupKey(currentGroupId) : null;
-    if (key) {
-      const pt = await decryptMessage(encryptedContent, iv, key, currentGroupId);
-      textEl.textContent = pt !== null ? pt : MSG_DECRYPT_FAIL;
-    } else {
-      textEl.textContent = MSG_NO_KEY;
+        // Add or update the "(edited)" badge in the meta line
+        const metaEl = bubble.querySelector('.msg-meta');
+        if (metaEl && !metaEl.querySelector('.msg-edited-badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'msg-edited-badge';
+          badge.textContent = ' (edited)';
+          // Insert before delivery receipt if present
+          const delEl = metaEl.querySelector('.msg-delivery');
+          if (delEl) metaEl.insertBefore(badge, delEl);
+          else metaEl.appendChild(badge);
+        }
+      }
     }
 
-    // Add or update the "(edited)" badge in the meta line
-    const metaEl = bubble.querySelector('.msg-meta');
-    if (metaEl && !metaEl.querySelector('.msg-edited-badge')) {
-      const badge = document.createElement('span');
-      badge.className = 'msg-edited-badge';
-      badge.textContent = ' (edited)';
-      // Insert before delivery receipt if present
-      const delEl = metaEl.querySelector('.msg-delivery');
-      if (delEl) metaEl.insertBefore(badge, delEl);
-      else metaEl.appendChild(badge);
+    // Keep caches in sync
+    for (const [groupId, cache] of groupDataCache.entries()) {
+      const stored = cache.messages ? cache.messages.find((msg) => msg.id === messageId) : null;
+      if (!stored) continue;
+      stored.encryptedContent = encryptedContent;
+      stored.iv = iv;
+      stored.editedAt = editedAt;
+      if (groupId !== currentGroupId) await rebuildGroupMessageRows(groupId);
+      if (groupId === currentGroupId) allMessages = cache.messages;
+      break;
     }
-
-    // Keep allMessages in sync
-    const stored = allMessages.find(m => m.id === messageId);
-    if (stored) { stored.encryptedContent = encryptedContent; stored.iv = iv; stored.editedAt = editedAt; }
   });
 
   socket.on('chat_cleared', ({ groupId }) => {
+    const cache = getGroupCacheEntry(groupId);
+    cache.messages = [];
+    cache.messageRows = [];
+    cache.members = cache.members || [];
+    cache.oldestMessageId = null;
     if (groupId !== currentGroupId) return;
-    const area = messagesArea();
-    area.innerHTML = '<div class="load-more-indicator" id="load-more-indicator" hidden>Loading older messages…</div>';
-    allMessages = [];
+    renderGroupFromCache(groupId);
     addSystemMessage('Chat history was cleared');
   });
 
@@ -1590,20 +1725,24 @@ function initSocket() {
   });
 
   socket.on('member_joined', ({ userId, username, iconColor, groupId }) => {
+    const cache = getGroupCacheEntry(groupId);
+    if (cache.members && !cache.members.find(m => m.id === userId)) {
+      cache.members.push({ id: userId, username, iconColor });
+    }
     if (groupId !== currentGroupId) return;
     addSystemMessage(username + ' joined the group');
-    if (!members.find(m => m.id === userId)) {
-      members.push({ id: userId, username, iconColor });
-      renderMembersList();
-      renderWhisperPicker();
-      $('chat-member-count').textContent = members.length + ' member' + (members.length !== 1 ? 's' : '');
-    }
+    members = cache.members || members;
+    renderMembersList();
+    renderWhisperPicker();
+    $('chat-member-count').textContent = members.length + ' member' + (members.length !== 1 ? 's' : '');
   });
 
   socket.on('member_left', ({ userId, username, groupId }) => {
+    const cache = getGroupCacheEntry(groupId);
+    if (cache.members) cache.members = cache.members.filter((member) => member.id !== userId);
     if (groupId !== currentGroupId) return;
     addSystemMessage(username + ' left the group');
-    members = members.filter(m => m.id !== userId);
+    members = cache.members || members.filter(m => m.id !== userId);
     renderMembersList();
     renderWhisperPicker();
     $('chat-member-count').textContent = members.length + ' member' + (members.length !== 1 ? 's' : '');
@@ -1651,17 +1790,31 @@ function initSocket() {
 
   socket.on('user_updated', (user) => {
     // Update member display names if affected
+    for (const cache of groupDataCache.values()) {
+      const cachedMember = cache.members ? cache.members.find((member) => member.id === user.id) : null;
+      if (cachedMember) {
+        cachedMember.username = user.username;
+        cachedMember.iconColor = user.iconColor;
+        cachedMember.profilePicture = user.profilePicture || null;
+      }
+      const cachedMessageUsers = cache.messages || [];
+      for (const message of cachedMessageUsers) {
+        if (message.senderId !== user.id) continue;
+        message.senderName = user.username;
+        message.senderColor = user.iconColor;
+      }
+    }
     const m = members.find(x => x.id === user.id);
     if (m) {
       m.username = user.username;
       m.iconColor = user.iconColor;
+      m.profilePicture = user.profilePicture || null;
       renderMembersList();
     }
     if (user.id === currentUser.id) {
       currentUser = user;
       $('user-username').textContent = user.username;
-      $('user-avatar').textContent = user.username[0].toUpperCase();
-      $('user-avatar').style.background = user.iconColor;
+      renderCurrentUserAvatar(user);
     }
     // Update avatars and sender names in visible message bubbles
     document.querySelectorAll('.msg-row[data-sender-id="' + CSS.escape(String(user.id)) + '"]').forEach(row => {
@@ -1777,6 +1930,8 @@ async function toggleEncryption() {
   // Re-render all messages
   if (!currentGroupId) return;
   await loadMessages(currentGroupId);
+  renderGroupFromCache(currentGroupId);
+  observeCurrentGroupRowsForRead();
 }
 
 // ── Forget key ────────────────────────────────────────────────────────────────
@@ -1788,6 +1943,8 @@ function forgetKey() {
       clearGroupKey(currentGroupId);
       updateKeyState();
       await loadMessages(currentGroupId);
+      renderGroupFromCache(currentGroupId);
+      observeCurrentGroupRowsForRead();
       showToast('Key forgotten — messages are now locked', 'info');
     }
   );
@@ -1919,7 +2076,7 @@ function setupEventListeners() {
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
     $('user-username').textContent = d.username;
-    $('user-avatar').textContent = d.username[0].toUpperCase();
+    renderCurrentUserAvatar(d);
     $('profile-error').textContent = '✓ Saved';
   });
 
@@ -1932,15 +2089,7 @@ function setupEventListeners() {
     const d = await res.json();
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
-    const ua = $('user-avatar');
-    if (d.profilePicture) {
-      ua.innerHTML = ''; ua.style.background = 'none';
-      const img = document.createElement('img');
-      img.src = d.profilePicture; img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
-      ua.appendChild(img);
-    } else {
-      ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
-    }
+    renderCurrentUserAvatar(d);
     $('profile-error').textContent = '✓ Saved';
   });
 
@@ -1988,12 +2137,7 @@ function setupEventListeners() {
       const d = await res.json();
       if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
       currentUser = d;
-      const ua = $('user-avatar');
-      ua.innerHTML = ''; ua.style.background = 'none';
-      const img = document.createElement('img');
-      img.src = d.profilePicture;
-      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
-      ua.appendChild(img);
+      renderCurrentUserAvatar(d);
       $('profile-error').textContent = '✓ Saved';
     };
     reader.readAsDataURL(file);
@@ -2008,8 +2152,7 @@ function setupEventListeners() {
     const d = await res.json();
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
-    const ua = $('user-avatar');
-    ua.innerHTML = ''; ua.textContent = d.username[0].toUpperCase(); ua.style.background = d.iconColor;
+    renderCurrentUserAvatar(d);
     $('profile-picture-preview').hidden = true;
     $('profile-picture-input').value = '';
     $('profile-error').textContent = '✓ Removed';
@@ -2086,6 +2229,8 @@ function setupEventListeners() {
     $('group-key-modal').hidden = true;
     updateKeyState();
     await loadMessages(currentGroupId);
+    renderGroupFromCache(currentGroupId);
+    observeCurrentGroupRowsForRead();
   });
 
   // Encryption toggle
