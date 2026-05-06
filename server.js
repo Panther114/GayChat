@@ -784,14 +784,14 @@ app.delete('/api/groups/:groupId/messages', (req, res) => {
   res.json({ ok: true });
 });
 
-// DELETE /api/groups/:groupId/messages/:messageId — delete single message
+// DELETE /api/groups/:groupId/messages/:messageId — disabled (message recall not available)
 app.delete('/api/groups/:groupId/messages/:messageId', (req, res) => {
-  return res.status(403).json({ error: 'Recalling sent messages is disabled' });
+  return res.status(410).json({ error: 'Message recall is not available' });
 });
 
-// PATCH /api/groups/:groupId/messages/:messageId — edit a message (sender only, text/whisper)
+// PATCH /api/groups/:groupId/messages/:messageId — disabled (message editing not available)
 app.patch('/api/groups/:groupId/messages/:messageId', (req, res) => {
-  return res.status(403).json({ error: 'Editing sent messages is disabled' });
+  return res.status(410).json({ error: 'Message editing is not available' });
 });
 
 // DELETE /api/groups/:groupId/leave — leave group (non-owner)

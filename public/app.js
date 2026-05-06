@@ -1499,9 +1499,16 @@ async function getAttachmentData(msg) {
     showToast('Unable to decrypt file', 'error');
     return null;
   }
-  const mimeType = msg.type === 'image' ? (detectImageMime(bytes) || 'image/png') : 'application/octet-stream';
+  const detectedImageMime = msg.type === 'image' ? detectImageMime(bytes) : null;
+  const mimeType = detectedImageMime || 'application/octet-stream';
   const blob = new Blob([bytes], { type: mimeType });
-  const filename = msg.filename || (msg.type === 'image' ? 'image' : 'file');
+  let filename = msg.filename;
+  if (!filename) {
+    if (detectedImageMime === 'image/png') filename = 'image.png';
+    else if (detectedImageMime === 'image/gif') filename = 'image.gif';
+    else if (detectedImageMime === 'image/webp') filename = 'image.webp';
+    else filename = msg.type === 'image' ? 'image.jpg' : 'file.bin';
+  }
   return { blob, filename, mimeType };
 }
 
@@ -1509,7 +1516,7 @@ async function copyAttachmentToClipboard(msg) {
   const data = await getAttachmentData(msg);
   if (!data) return;
   if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
-    showToast('Clipboard file copy is not supported in this environment', 'error');
+    showToast('Clipboard file copy is not supported here. Please download instead.', 'error');
     return;
   }
   try {
@@ -1518,7 +1525,7 @@ async function copyAttachmentToClipboard(msg) {
     showToast('Copied to clipboard', 'success');
   } catch (err) {
     console.error('copyAttachmentToClipboard error:', err);
-    showToast('Failed to copy file', 'error');
+    showToast('Failed to copy file to clipboard', 'error');
   }
 }
 
@@ -1532,7 +1539,7 @@ async function downloadAttachment(msg) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 // ── Edit message ──────────────────────────────────────────────────────────────
@@ -2513,7 +2520,7 @@ function setupEventListeners() {
   $('edit-group-name-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      e.target.blur();
+      saveGroupName();
     }
   });
   $('edit-group-name-input').addEventListener('blur', saveGroupName);
@@ -2587,7 +2594,6 @@ function setupEventListeners() {
     });
     if (currentGroupData) {
       currentGroupData.allowMemberKick = e.target.checked;
-      renderMembersList();
     }
   });
 
