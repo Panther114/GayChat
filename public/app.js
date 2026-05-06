@@ -146,16 +146,56 @@ function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : s; }
+function normalizeIsoTime(iso) {
+  if (!iso) return '';
+  const str = String(iso).replace(' ', 'T');
+  return (str.endsWith('Z') || str.includes('+')) ? str : str + 'Z';
+}
+function parseMessageDate(iso) {
+  return new Date(normalizeIsoTime(iso));
+}
 function formatTime(iso) {
   if (!iso) return '';
-  // SQLite CURRENT_TIMESTAMP returns 'YYYY-MM-DD HH:MM:SS' (no T, no Z).
-  // Normalize to a proper UTC ISO string before parsing so all browsers
-  // treat it as UTC rather than local time.
-  const str = iso.replace(' ', 'T');
-  const utc = (str.endsWith('Z') || str.includes('+')) ? str : str + 'Z';
-  return new Date(utc).toLocaleTimeString('zh-CN', {
+  return parseMessageDate(iso).toLocaleTimeString('zh-CN', {
     timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false,
   });
+}
+function formatDay(iso) {
+  if (!iso) return '';
+  return parseMessageDate(iso).toLocaleDateString('en-US', { timeZone: 'Asia/Shanghai' });
+}
+function isSameMessageDay(a, b) {
+  if (!a || !b) return false;
+  return formatDay(a) === formatDay(b);
+}
+function shouldContinueSeries(prevMsg, currentMsg) {
+  if (!prevMsg || !currentMsg) return false;
+  if (prevMsg.type === 'system' || currentMsg.type === 'system') return false;
+  if (prevMsg.senderId !== currentMsg.senderId) return false;
+  if (!isSameMessageDay(prevMsg.createdAt, currentMsg.createdAt)) return false;
+  const prevTime = parseMessageDate(prevMsg.createdAt).getTime();
+  const currentTime = parseMessageDate(currentMsg.createdAt).getTime();
+  const gapMinutes = (currentTime - prevTime) / 60000;
+  return gapMinutes >= 0 && gapMinutes <= 10;
+}
+function createDateDivider(iso) {
+  const el = document.createElement('div');
+  el.className = 'msg-date-divider';
+  el.textContent = formatDay(iso);
+  return el;
+}
+function renderAvatarElement(target, userLike = {}) {
+  if (!target) return;
+  target.replaceChildren();
+  const username = userLike.username || userLike.senderName || '?';
+  if (userLike.profilePicture) {
+    target.style.background = 'none';
+    target.textContent = '';
+    target.appendChild(createAvatarImage(userLike.profilePicture));
+    return;
+  }
+  target.style.background = userLike.iconColor || userLike.senderColor || '#4A90D9';
+  target.textContent = username[0].toUpperCase();
 }
 
 function normalizeDeliveryCounts(totalRecipients, readCount) {
@@ -338,6 +378,21 @@ function createAvatarImage(src) {
   return img;
 }
 
+function setProfilePictureMode(mode) {
+  const slider = $('profile-picture-mode-slider');
+  if (!slider) return;
+  const isImage = mode === 'image';
+  slider.value = isImage ? '1' : '0';
+  $('profile-picture-color-section').hidden = isImage;
+  $('profile-picture-upload-section').hidden = !isImage;
+  $('profile-mode-color-label').classList.toggle('active', !isImage);
+  $('profile-mode-image-label').classList.toggle('active', isImage);
+}
+
+function syncProfilePictureModeUI() {
+  setProfilePictureMode(currentUser && currentUser.profilePicture ? 'image' : 'color');
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentGroupId = null;
@@ -367,15 +422,7 @@ const groupPreloadPromises = new Map();
 function renderCurrentUserAvatar(user = currentUser) {
   const avatar = $('user-avatar');
   if (!avatar || !user) return;
-  avatar.replaceChildren();
-  const initial = user.username ? user.username[0].toUpperCase() : '';
-  if (user.profilePicture) {
-    avatar.style.background = 'none';
-    avatar.appendChild(createAvatarImage(user.profilePicture));
-    return;
-  }
-  avatar.style.background = user.iconColor;
-  avatar.textContent = initial;
+  renderAvatarElement(avatar, user);
 }
 
 function ensureGroupCacheEntry(groupId) {
@@ -391,6 +438,16 @@ function ensureGroupCacheEntry(groupId) {
   return groupDataCache.get(groupId);
 }
 
+function getMemberProfile(groupId, userId) {
+  const cache = ensureGroupCacheEntry(groupId);
+  const groupMembers = cache.members || [];
+  const groupMember = groupMembers.find((member) => member.id === userId);
+  if (groupMember) return groupMember;
+  const activeMember = members.find((member) => member.id === userId);
+  if (activeMember) return activeMember;
+  return null;
+}
+
 function createLoadMoreIndicator() {
   const indicator = document.createElement('div');
   indicator.className = 'load-more-indicator';
@@ -401,12 +458,24 @@ function createLoadMoreIndicator() {
 }
 
 async function buildMessageRows(messages, groupId) {
-  const results = await Promise.allSettled(messages.map((msg) => buildMessageRow(msg, groupId)));
-  return results.flatMap((result, index) => {
-    if (result.status === 'fulfilled') return [result.value];
-    console.error('buildMessageRow failed:', messages[index]?.id, result.reason);
-    return [];
-  });
+  const rows = [];
+  let prevMessage = null;
+  for (const msg of messages) {
+    const showSenderName = !shouldContinueSeries(prevMessage, msg);
+    try {
+      const row = await buildMessageRow(msg, groupId, { showSenderName });
+      if (row) {
+        if (!prevMessage || !isSameMessageDay(prevMessage.createdAt, msg.createdAt)) {
+          rows.push(createDateDivider(msg.createdAt));
+        }
+        rows.push(row);
+        if (msg.type !== 'system') prevMessage = msg;
+      }
+    } catch (err) {
+      console.error('buildMessageRow failed:', msg?.id, err);
+    }
+  }
+  return rows;
 }
 
 async function rebuildGroupMessageRows(groupId) {
@@ -729,6 +798,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   preloadAllGroups();
   initSocket();
   setupEventListeners();
+  syncProfilePictureModeUI();
   setupEmojiPicker();
   setupKeyboardShortcuts();
   updateWhisperBtn();
@@ -799,7 +869,7 @@ function buildGroupItem(g) {
 
   const av = document.createElement('div');
   av.className = 'group-item-avatar';
-  av.style.background = '#' + Math.abs(hashCode(g.name)).toString(16).slice(0,6).padStart(6,'5');
+  av.style.background = groupAvatarColor(g);
   av.textContent = g.name[0].toUpperCase();
 
   const info = document.createElement('div');
@@ -832,6 +902,45 @@ function hashCode(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i);
   return h;
+}
+
+function groupAvatarColor(group) {
+  if (group && group.groupColor) return group.groupColor;
+  return '#' + Math.abs(hashCode(group && group.name ? group.name : 'group')).toString(16).slice(0, 6).padStart(6, '5');
+}
+
+function updateQuickActionButtonState(button, { enabled, labelEnabled }) {
+  if (!button) return;
+  button.disabled = !enabled;
+  button.dataset.label = enabled ? labelEnabled : 'Feature disabled by owner';
+  button.title = enabled ? labelEnabled : 'Feature disabled by owner';
+}
+
+function updateGroupActionButtons(isOwner) {
+  const exportBtn = $('export-btn');
+  const clearBtn = $('clear-history-btn');
+  const leaveBtn = $('leave-group-btn');
+  const disbandBtn = $('disband-btn');
+
+  const canMemberExport = !!(currentGroupData && currentGroupData.allowMemberExport);
+  const canMemberClear = !!(currentGroupData && currentGroupData.allowMemberClear);
+
+  if (isOwner) {
+    updateQuickActionButtonState(exportBtn, { enabled: true, labelEnabled: 'Export chat as TXT' });
+    updateQuickActionButtonState(clearBtn, { enabled: true, labelEnabled: 'Clear chat history' });
+  } else {
+    updateQuickActionButtonState(exportBtn, { enabled: canMemberExport, labelEnabled: 'Export chat as TXT' });
+    updateQuickActionButtonState(clearBtn, { enabled: canMemberClear, labelEnabled: 'Clear chat history' });
+  }
+
+  if (leaveBtn) {
+    leaveBtn.hidden = !!isOwner;
+    leaveBtn.dataset.label = 'Exit group';
+  }
+  if (disbandBtn) {
+    disbandBtn.hidden = !isOwner;
+    disbandBtn.dataset.label = 'Disband group';
+  }
 }
 
 function updateGroupPreview(groupId, text, time) {
@@ -884,13 +993,13 @@ async function selectGroup(groupId) {
   // Owner controls
   const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
   $('owner-actions').hidden = !isOwner;
-  $('member-actions').hidden = isOwner;
-  // Show clear history button if owner OR if member with permission
-  const canClearHistory = isOwner || (currentGroupData && currentGroupData.allowMemberClear);
-  $('common-actions').hidden = !canClearHistory;
-  if (isOwner && currentGroupData) {
+  $('set-group-color-btn').hidden = !isOwner;
+  $('common-actions').hidden = false;
+  if (currentGroupData) {
     $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
+    $('allow-member-export-toggle').checked = !!currentGroupData.allowMemberExport;
   }
+  updateGroupActionButtons(isOwner);
 
   // Key state
   updateKeyState();
@@ -950,10 +1059,13 @@ async function loadMessages(groupId, before) {
       const prevScrollHeight = area.scrollHeight;
       const rows = await buildMessageRows(msgs, groupId);
       const fragment = document.createDocumentFragment();
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+      for (const row of rows) {
         if (!row) continue;
-        observeMessageForRead(row, msgs[i]);
+        if (row.classList && row.classList.contains('msg-row')) {
+          const msgId = row.dataset.msgId;
+          const srcMsg = msgs.find((m) => String(m.id) === String(msgId));
+          if (srcMsg) observeMessageForRead(row, srcMsg);
+        }
         fragment.appendChild(row);
       }
       const oldFirst = area.querySelector('.msg-row, .msg-system');
@@ -994,16 +1106,7 @@ function renderMembersList() {
 
     const av = document.createElement('div');
     av.className = 'member-avatar';
-    if (m.profilePicture) {
-      av.style.background = 'none';
-      const img = document.createElement('img');
-      img.src = m.profilePicture;
-      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
-      av.appendChild(img);
-    } else {
-      av.style.background = m.iconColor;
-      av.textContent = m.username[0].toUpperCase();
-    }
+    renderAvatarElement(av, m);
 
     if (onlineUsers.has(m.id)) {
       const dot = document.createElement('span');
@@ -1063,8 +1166,9 @@ function renderWhisperPicker() {
 }
 
 // ── Build & append message bubbles ────────────────────────────────────────────
-async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId) {
+async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, options = {}) {
   const isOwn = msg.senderId === currentUser.id;
+  const showSenderName = options.showSenderName !== false;
 
   // System message
   if (msg.type === 'system') {
@@ -1080,7 +1184,8 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId) {
     if (msg.whisperTo) {
       try { recipients = JSON.parse(msg.whisperTo); } catch { recipients = msg.whisperTo.split(','); }
     }
-    if (!isOwn && !recipients.includes(currentUser.id)) return document.createTextNode('');
+    const normalizedRecipients = recipients.map((id) => String(id));
+    if (!isOwn && !normalizedRecipients.includes(String(currentUser.id))) return null;
   }
 
   const row = document.createElement('div');
@@ -1088,31 +1193,26 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId) {
   row.dataset.msgId = msg.id;
   row.dataset.senderId = msg.senderId;
 
-  // Avatar
   const av = document.createElement('div');
   av.className = 'msg-avatar';
-  // Look up profile picture from members list
-  const member = members.find(m => m.id === msg.senderId);
-  if (member && member.profilePicture) {
-    av.style.background = 'none';
-    const img = document.createElement('img');
-    img.src = member.profilePicture;
-    img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '50%';
-    av.appendChild(img);
-  } else {
-    av.style.background = msg.senderColor || '#4A90D9';
-    av.textContent = (msg.senderName || '?')[0].toUpperCase();
-  }
+  const memberProfile = getMemberProfile(groupId, msg.senderId);
+  renderAvatarElement(av, {
+    username: memberProfile?.username || msg.senderName,
+    iconColor: memberProfile?.iconColor || msg.senderColor,
+    profilePicture: memberProfile?.profilePicture || null,
+  });
 
   const content = document.createElement('div');
   content.className = 'msg-content';
 
   // Sender name (for others)
-  if (!isOwn) {
+  if (!isOwn && showSenderName) {
     const nameEl = document.createElement('div');
     nameEl.className = 'msg-sender-name';
-    nameEl.textContent = msg.senderName || 'Unknown';
+    nameEl.textContent = memberProfile?.username || msg.senderName || 'Unknown';
     content.appendChild(nameEl);
+  } else if (!isOwn && !showSenderName) {
+    row.classList.add('series-continued');
   }
 
   const bubble = document.createElement('div');
@@ -1185,7 +1285,7 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId) {
   bubble.addEventListener('touchend', () => clearTimeout(longPressTimer));
 
   if (isOwn) {
-    row.append(content, av);
+    row.append(content);
   } else {
     row.append(av, content);
   }
@@ -1281,23 +1381,24 @@ async function renderMsgContent(msg, textEl, bubble, groupId = currentGroupId) {
 }
 
 async function appendMessageBubble(msg, scroll, groupId = currentGroupId) {
-  const row = await buildMessageRow(msg, groupId);
+  const previousMessage = allMessages.length ? allMessages[allMessages.length - 1] : null;
+  const showSenderName = !shouldContinueSeries(previousMessage, msg);
+  const row = await buildMessageRow(msg, groupId, { showSenderName });
   if (!row) return;
 
-  // Grouping: hide avatar/name for consecutive messages from same sender
   const area = messagesArea();
-  const rows = area.querySelectorAll('.msg-row[data-sender-id]');
-  if (rows.length > 0) {
-    const prev = rows[rows.length - 1];
-    if (prev.dataset.senderId === msg.senderId) {
-      row.classList.add('grouped');
-    }
+  const cache = ensureGroupCacheEntry(groupId);
+
+  if (!previousMessage || !isSameMessageDay(previousMessage.createdAt, msg.createdAt)) {
+    const dayDivider = createDateDivider(msg.createdAt);
+    area.appendChild(dayDivider);
+    cache.messageRows = cache.messageRows || [];
+    cache.messageRows.push(dayDivider);
   }
 
   area.appendChild(row);
   observeMessageForRead(row, msg);
   allMessages.push(msg);
-  const cache = ensureGroupCacheEntry(groupId);
   cache.messages = allMessages;
   cache.messageRows = cache.messageRows || [];
   cache.messageRows.push(row);
@@ -1599,10 +1700,12 @@ function initSocket() {
         cache.oldestMessageId = cache.messages.length ? cache.messages[0].id : null;
       }
       if (cache.messageRows && !cache.rowsDirty) {
-        const row = await buildMessageRow(msg, msg.groupId);
+        const prevMsg = cache.messages && cache.messages.length > 1 ? cache.messages[cache.messages.length - 2] : null;
+        const row = await buildMessageRow(msg, msg.groupId, { showSenderName: !shouldContinueSeries(prevMsg, msg) });
         if (row) {
-          const prev = cache.messageRows[cache.messageRows.length - 1];
-          if (prev && prev.dataset && prev.dataset.senderId === msg.senderId) row.classList.add('grouped');
+          if (!prevMsg || !isSameMessageDay(prevMsg.createdAt, msg.createdAt)) {
+            cache.messageRows.push(createDateDivider(msg.createdAt));
+          }
           cache.messageRows.push(row);
         }
       }
@@ -1750,10 +1853,37 @@ function initSocket() {
     renderGroupList();
   });
 
-  socket.on('member_joined', ({ userId, username, iconColor, groupId }) => {
+  socket.on('group_settings_updated', ({ groupId, allowMemberClear, allowMemberExport, groupColor }) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (group) {
+      if (allowMemberClear !== undefined) group.allowMemberClear = !!allowMemberClear;
+      if (allowMemberExport !== undefined) group.allowMemberExport = !!allowMemberExport;
+      if (groupColor !== undefined) group.groupColor = groupColor || null;
+    }
+    const cache = ensureGroupCacheEntry(groupId);
+    if (cache && cache.messages) cache.rowsDirty = true;
+    if (groupId !== currentGroupId) {
+      renderGroupList();
+      return;
+    }
+    if (currentGroupData) {
+      if (allowMemberClear !== undefined) currentGroupData.allowMemberClear = !!allowMemberClear;
+      if (allowMemberExport !== undefined) currentGroupData.allowMemberExport = !!allowMemberExport;
+      if (groupColor !== undefined) currentGroupData.groupColor = groupColor || null;
+    }
+    const isOwner = currentGroupData && currentGroupData.createdBy === currentUser.id;
+    if (isOwner) {
+      $('allow-member-clear-toggle').checked = !!currentGroupData.allowMemberClear;
+      $('allow-member-export-toggle').checked = !!currentGroupData.allowMemberExport;
+    }
+    updateGroupActionButtons(isOwner);
+    renderGroupList();
+  });
+
+  socket.on('member_joined', ({ userId, username, iconColor, profilePicture, groupId }) => {
     const cache = ensureGroupCacheEntry(groupId);
     if (cache.members && !cache.members.find(m => m.id === userId)) {
-      cache.members.push({ id: userId, username, iconColor });
+      cache.members.push({ id: userId, username, iconColor, profilePicture: profilePicture || null });
     }
     if (groupId !== currentGroupId) return;
     addSystemMessage(username + ' joined the group');
@@ -1829,6 +1959,7 @@ function initSocket() {
         message.senderName = user.username;
         message.senderColor = user.iconColor;
       }
+      if (cachedMember) cache.rowsDirty = true;
     }
     const m = members.find(x => x.id === user.id);
     if (m) {
@@ -1841,11 +1972,12 @@ function initSocket() {
       currentUser = user;
       $('user-username').textContent = user.username;
       renderCurrentUserAvatar(user);
+      syncProfilePictureModeUI();
     }
     // Update avatars and sender names in visible message bubbles
     document.querySelectorAll('.msg-row[data-sender-id="' + CSS.escape(String(user.id)) + '"]').forEach(row => {
       const av = row.querySelector('.msg-avatar');
-      if (av && user.username) { av.style.background = user.iconColor; av.textContent = user.username[0].toUpperCase(); }
+      if (av && user.username) renderAvatarElement(av, user);
       const nameEl = row.querySelector('.msg-sender-name');
       if (nameEl && user.username) nameEl.textContent = user.username;
     });
@@ -2087,9 +2219,17 @@ function setupEventListeners() {
     $('profile-username').value = currentUser.username;
     $('profile-color').value = currentUser.iconColor;
     $('profile-error').textContent = '';
+    $('profile-picture-input').value = '';
+    if (currentUser.profilePicture) {
+      $('profile-picture-preview-img').src = currentUser.profilePicture;
+      $('profile-picture-preview').hidden = false;
+    } else {
+      $('profile-picture-preview').hidden = true;
+    }
+    syncProfilePictureModeUI();
     $('profile-modal').hidden = false;
   });
-  $('profile-cancel-btn').addEventListener('click', () => $('profile-modal').hidden = true);
+  $('profile-close-btn').addEventListener('click', () => $('profile-modal').hidden = true);
 
   $('profile-save-username').addEventListener('click', async () => {
     const username = $('profile-username').value.trim();
@@ -2103,6 +2243,7 @@ function setupEventListeners() {
     currentUser = d;
     $('user-username').textContent = d.username;
     renderCurrentUserAvatar(d);
+    syncProfilePictureModeUI();
     $('profile-error').textContent = '✓ Saved';
   });
 
@@ -2116,16 +2257,13 @@ function setupEventListeners() {
     if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
     currentUser = d;
     renderCurrentUserAvatar(d);
+    syncProfilePictureModeUI();
     $('profile-error').textContent = '✓ Saved';
   });
 
-  // Profile picture type toggle
-  document.querySelectorAll('input[name="profile-picture-type"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      const type = document.querySelector('input[name="profile-picture-type"]:checked').value;
-      $('profile-picture-color-section').hidden = type !== 'color';
-      $('profile-picture-upload-section').hidden = type !== 'image';
-    });
+  // Profile picture mode slider
+  $('profile-picture-mode-slider').addEventListener('input', () => {
+    setProfilePictureMode($('profile-picture-mode-slider').value === '1' ? 'image' : 'color');
   });
 
   // Profile picture upload preview
@@ -2164,6 +2302,7 @@ function setupEventListeners() {
       if (!res.ok) { $('profile-error').textContent = d.error || 'Failed'; return; }
       currentUser = d;
       renderCurrentUserAvatar(d);
+      syncProfilePictureModeUI();
       $('profile-error').textContent = '✓ Saved';
     };
     reader.readAsDataURL(file);
@@ -2181,6 +2320,7 @@ function setupEventListeners() {
     renderCurrentUserAvatar(d);
     $('profile-picture-preview').hidden = true;
     $('profile-picture-input').value = '';
+    syncProfilePictureModeUI();
     $('profile-error').textContent = '✓ Removed';
   });
 
@@ -2300,8 +2440,29 @@ function setupEventListeners() {
     }
   });
 
+  // Group color
+  $('set-group-color-btn').addEventListener('click', () => {
+    if (!currentGroupId) return;
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = (currentGroupData && currentGroupData.groupColor) || '#4a90d9';
+    picker.addEventListener('change', async (e) => {
+      const groupColor = e.target.value;
+      const res = await fetch('/api/groups/' + currentGroupId + '/settings', {
+        method: 'PATCH', headers: apiHeaders(),
+        body: JSON.stringify({ groupColor }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to set group color', 'error');
+      }
+    }, { once: true });
+    picker.click();
+  });
+
   // Clear chat history
   $('clear-history-btn').addEventListener('click', () => {
+    if ($('clear-history-btn').disabled) return;
     showConfirm(
       'Clear Chat History',
       'This will permanently delete all messages for everyone. Continue?',
@@ -2323,14 +2484,32 @@ function setupEventListeners() {
       method: 'PATCH', headers: apiHeaders(),
       body: JSON.stringify({ allowMemberClear: e.target.checked }),
     });
-    if (currentGroupData) currentGroupData.allowMemberClear = e.target.checked;
+    if (currentGroupData) {
+      currentGroupData.allowMemberClear = e.target.checked;
+      updateGroupActionButtons(currentGroupData.createdBy === currentUser.id);
+    }
+  });
+
+  $('allow-member-export-toggle').addEventListener('change', async (e) => {
+    await fetch('/api/groups/' + currentGroupId + '/settings', {
+      method: 'PATCH', headers: apiHeaders(),
+      body: JSON.stringify({ allowMemberExport: e.target.checked }),
+    });
+    if (currentGroupData) {
+      currentGroupData.allowMemberExport = e.target.checked;
+      updateGroupActionButtons(currentGroupData.createdBy === currentUser.id);
+    }
   });
 
   // Export chat
-  $('export-btn').addEventListener('click', exportChat);
+  $('export-btn').addEventListener('click', () => {
+    if ($('export-btn').disabled) return;
+    exportChat();
+  });
 
   // Disband group
   $('disband-btn').addEventListener('click', () => {
+    if ($('disband-btn').disabled) return;
     showConfirm('Disband Group', 'Permanently disband this group and delete all messages?', async () => {
       const res = await fetch('/api/groups/' + currentGroupId, {
         method: 'DELETE', headers: apiHeaders(),
@@ -2344,6 +2523,7 @@ function setupEventListeners() {
 
   // Leave group
   $('leave-group-btn').addEventListener('click', () => {
+    if ($('leave-group-btn').disabled) return;
     showConfirm('Leave Group', 'Are you sure you want to leave this group?', async () => {
       const res = await fetch('/api/groups/' + currentGroupId + '/leave', {
         method: 'DELETE', headers: apiHeaders(),
@@ -2561,15 +2741,17 @@ async function loadOlderMessages() {
     const area = messagesArea();
     const prevScrollHeight = area.scrollHeight;
 
-    // Build all rows concurrently (msgs is oldest-first from server)
-    const rows = await Promise.all(msgs.map(m => buildMessageRow(m)));
+    const rows = await buildMessageRows(msgs, currentGroupId);
 
     // Assemble into a fragment (single DOM mutation, no scroll drift)
     const fragment = document.createDocumentFragment();
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    for (const row of rows) {
       if (!row) continue;
-      observeMessageForRead(row, msgs[i]);
+      if (row.classList && row.classList.contains('msg-row')) {
+        const msgId = row.dataset.msgId;
+        const srcMsg = msgs.find((m) => String(m.id) === String(msgId));
+        if (srcMsg) observeMessageForRead(row, srcMsg);
+      }
       fragment.appendChild(row);
     }
 
@@ -2583,6 +2765,11 @@ async function loadOlderMessages() {
 
     allMessages = [...msgs, ...allMessages];
     oldestMessageId = msgs[0].id;
+    const cache = ensureGroupCacheEntry(currentGroupId);
+    cache.messages = allMessages;
+    cache.messageRows = [...rows, ...(cache.messageRows || [])];
+    cache.oldestMessageId = oldestMessageId;
+    cache.rowsDirty = false;
 
     // Restore scroll position in one step
     area.scrollTop = area.scrollHeight - prevScrollHeight;
