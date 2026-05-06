@@ -215,3 +215,5 @@ Open `http://localhost:3000` in your browser.
 - Passwords are hashed with **bcrypt** (cost factor 12).
 - The `*.db` files are git-ignored and should never be committed.
 - In production (Railway), session cookies are set with `httpOnly: true` and `secure: true`.
+
+- 20-second product promo page: `public/promo.html` (open `/promo.html`).

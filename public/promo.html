@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gchat | 20-Second Product Promo</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <style>
+    :root { --bg:#090912; --panel:#111123; --text:#f4f4ff; --muted:#9c9cc3; --accent:#6c63ff; --accent2:#00d4aa; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; color:var(--text); background:radial-gradient(circle at 30% 10%, #1f1f46, var(--bg)); min-height:100vh; display:grid; place-items:center; }
+    .promo { width:min(920px,92vw); background:rgba(17,17,35,.82); border:1px solid #2a2a4a; border-radius:20px; padding:28px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+    .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+    .brand { font-size:22px; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; color:transparent; }
+    .timer { color:var(--muted); font-size:13px; }
+    .stage { min-height:290px; border-radius:16px; background:#0d0d1d; border:1px solid #262644; padding:26px; display:flex; flex-direction:column; justify-content:center; gap:12px; }
+    .kicker { color:var(--accent2); letter-spacing:.08em; text-transform:uppercase; font-size:12px; font-weight:700; }
+    h1 { margin:0; font-size:clamp(24px,5vw,42px); line-height:1.12; }
+    p { margin:0; color:var(--muted); font-size:clamp(14px,2vw,18px); max-width:58ch; }
+    .chips { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+    .chip { padding:8px 12px; border:1px solid #363665; border-radius:999px; background:#151533; font-size:12px; color:#e3e3ff; }
+    .cta { margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .btn { text-decoration:none; background:var(--accent); color:white; padding:12px 16px; border-radius:10px; font-weight:700; }
+    .progress { height:8px; border-radius:99px; background:#1b1b36; overflow:hidden; margin-top:16px; }
+    .bar { height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .15s linear; }
+  </style>
+</head>
+<body>
+  <section class="promo" aria-live="polite">
+    <div class="top">
+      <div class="brand">💬 Gchat</div>
+      <div class="timer" id="timer">00 / 20s</div>
+    </div>
+
+    <article class="stage" id="stage">
+      <div class="kicker" id="kicker"></div>
+      <h1 id="title"></h1>
+      <p id="copy"></p>
+      <div class="chips" id="chips"></div>
+      <div class="cta" id="cta"></div>
+    </article>
+
+    <div class="progress"><div class="bar" id="bar"></div></div>
+  </section>
+
+<script>
+const scenes = [
+  { t:0, kicker:'INTRO', title:'Meet Gchat.', copy:'Private group messaging built for teams, friends, and communities that want speed with security.', chips:['Fast setup','Modern UI'] },
+  { t:4, kicker:'SECURE', title:'End-to-end encrypted by default.', copy:'Every message is encrypted with per-group keys, so your conversations stay yours.', chips:['AES-GCM','Per-group keys','Private by design'] },
+  { t:8, kicker:'REAL-TIME', title:'Feel instantly connected.', copy:'Typing indicators, unread tracking, delivery ticks, and notifications keep everyone in sync.', chips:['Live updates','Read tracking','Native notifications'] },
+  { t:12, kicker:'POWERFUL', title:'More than plain text.', copy:'Share files, images, emojis, whispers, and manage groups with owner controls from one place.', chips:['Media support','Whisper mode','Group controls'] },
+  { t:16, kicker:'CALL TO ACTION', title:'Launch secure chats in seconds.', copy:'Sign in, create a group, share the code, and start talking—securely.', chips:['Web + Desktop'], cta:'Get started at /' }
+];
+
+const totalSeconds = 20;
+const el = {
+  kicker: document.getElementById('kicker'), title: document.getElementById('title'),
+  copy: document.getElementById('copy'), chips: document.getElementById('chips'),
+  cta: document.getElementById('cta'), timer: document.getElementById('timer'), bar: document.getElementById('bar')
+};
+
+function renderScene(scene) {
+  el.kicker.textContent = scene.kicker;
+  el.title.textContent = scene.title;
+  el.copy.textContent = scene.copy;
+  el.chips.innerHTML = scene.chips.map(c => `<span class="chip">${c}</span>`).join('');
+  el.cta.innerHTML = scene.cta ? `<a class="btn" href="/">${scene.cta}</a>` : '';
+}
+
+let start = performance.now();
+let lastIndex = -1;
+function tick(now) {
+  const elapsed = Math.min(totalSeconds, (now - start) / 1000);
+  const sec = Math.floor(elapsed);
+  el.timer.textContent = `${String(sec).padStart(2,'0')} / 20s`;
+  el.bar.style.width = `${(elapsed / totalSeconds) * 100}%`;
+
+  const idx = scenes.map(s => s.t).filter(t => elapsed >= t).length - 1;
+  if (idx !== lastIndex && scenes[idx]) {
+    lastIndex = idx;
+    renderScene(scenes[idx]);
+  }
+
+  if (elapsed < totalSeconds) requestAnimationFrame(tick);
+}
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
