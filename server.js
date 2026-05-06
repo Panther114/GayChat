@@ -765,7 +765,7 @@ app.get('/api/groups/:groupId/messages', (req, res) => {
 
   let rows;
   if (before) {
-    // CTE parameter order: (refMessageId, userId, groupId, limit)
+    // CTE parameter order: (beforeMessageId, userId, groupId, limit)
     rows = stmts.getMessagesBefore.all(before, userId, groupId, limit).reverse();
   } else {
     rows = stmts.getLastMessages.all(userId, groupId, limit).reverse();

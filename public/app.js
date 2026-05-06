@@ -1021,6 +1021,11 @@ async function updateGroupPreviewFromMessage(groupId, msg) {
   updateGroupPreview(groupId, preview, msg.createdAt);
 }
 
+function applyCurrentUserReadState(msg) {
+  if (!msg) return;
+  msg.hasRead = msg.senderId === currentUser.id;
+}
+
 function updateUnreadBadge(groupId, count) {
   const badge = $('badge-' + groupId);
   if (!badge) return;
@@ -1253,7 +1258,7 @@ function renderWhisperPicker() {
 async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, options = {}) {
   const isOwn = msg.senderId === currentUser.id;
   const showSenderName = options.showSenderName !== false;
-  const isSeenByMe = isOwn || msg.hasRead === true;
+  const isReadByMe = isOwn || msg.hasRead === true;
 
   // System message
   if (msg.type === 'system') {
@@ -1277,8 +1282,8 @@ async function buildMessageRow(msg, groupId = msg.groupId || currentGroupId, opt
   row.className = 'msg-row' + (isOwn ? ' own' : '') + (msg.type === 'whisper' ? ' whisper' : '');
   row.dataset.msgId = msg.id;
   row.dataset.senderId = msg.senderId;
-  row.dataset.hasRead = isSeenByMe ? '1' : '0';
-  if (!isSeenByMe) row.classList.add('unseen');
+  row.dataset.hasRead = isReadByMe ? '1' : '0';
+  if (!isReadByMe) row.classList.add('unseen');
 
   const av = document.createElement('div');
   av.className = 'msg-avatar';
@@ -1913,7 +1918,7 @@ function initSocket() {
     }
 
     if (msg.groupId !== currentGroupId) {
-      msg.hasRead = msg.senderId === currentUser.id;
+      applyCurrentUserReadState(msg);
       const cache = ensureGroupCacheEntry(msg.groupId);
       if (cache.messages) {
         cache.messages.push(msg);
@@ -1950,7 +1955,7 @@ function initSocket() {
       }
       return;
     }
-    msg.hasRead = msg.senderId === currentUser.id;
+    applyCurrentUserReadState(msg);
     if (msg.senderId !== currentUser.id) {
       unreadCounts[msg.groupId] = (unreadCounts[msg.groupId] || 0) + 1;
       updateUnreadBadge(msg.groupId, unreadCounts[msg.groupId]);
@@ -2876,7 +2881,7 @@ function setupEventListeners() {
     if (file) { handleFileUpload(file); e.target.value = ''; }
   });
 
-  // Paste file/image
+  // Paste files from clipboard
   msgInput.addEventListener('paste', async (e) => {
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
